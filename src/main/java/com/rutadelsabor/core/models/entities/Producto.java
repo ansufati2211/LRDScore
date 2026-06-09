@@ -30,4 +30,8 @@ public class Producto extends BaseTenantEntity {
 
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
+
+    // AÑADIDO: Mapeamos la columna tags_busqueda que ya existe en tu base de datos (DATA.sql)
+    @Column(name = "tags_busqueda", columnDefinition = "TEXT")
+    private String tagsBusqueda;
 }

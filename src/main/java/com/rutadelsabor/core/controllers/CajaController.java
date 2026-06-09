@@ -3,7 +3,6 @@ package com.rutadelsabor.core.controllers;
 import com.rutadelsabor.core.dto.request.SesionCajaRequestDTO;
 import com.rutadelsabor.core.models.entities.SesionCaja;
 import com.rutadelsabor.core.services.interfaces.ICajaService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,8 +11,13 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/caja")
 public class CajaController {
 
-    @Autowired
-    private ICajaService cajaService;
+    // 1. Variable final y sin @Autowired
+    private final ICajaService cajaService;
+
+    // 2. Inyección por Constructor (Resuelve java:S6813)
+    public CajaController(ICajaService cajaService) {
+        this.cajaService = cajaService;
+    }
 
     @PostMapping("/abrir")
     public ResponseEntity<SesionCaja> abrirCaja(@RequestBody SesionCajaRequestDTO request) {

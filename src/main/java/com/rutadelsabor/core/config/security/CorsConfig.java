@@ -1,7 +1,6 @@
 package com.rutadelsabor.core.config.security;
 
 import com.rutadelsabor.core.config.tenant.TenantInterceptor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -10,8 +9,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
-    @Autowired
-    private TenantInterceptor tenantInterceptor;
+    private final TenantInterceptor tenantInterceptor;
+
+    // 1. Inyección por Constructor (Resuelve java:S6813)
+    // Spring inyectará automáticamente el TenantInterceptor aquí
+    public CorsConfig(TenantInterceptor tenantInterceptor) {
+        this.tenantInterceptor = tenantInterceptor;
+    }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -22,7 +26,14 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns("*") // Permite cualquier frontend (Railway, Localhost, Vercel)
+                // 2. Orígenes específicos en lugar de "*" (Resuelve java:S5122)
+                // Aquí agregamos los puertos típicos de desarrollo de React (3000) y Vite (5173).
+                // Cuando subas tu frontend a internet, solo agregas tu URL de Vercel/Netlify aquí.
+                .allowedOrigins(
+                        "http://localhost:3000", 
+                        "http://localhost:5173",
+                        "https://larutadelsabor-frontend.vercel.app" // Ejemplo de producción
+                )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 .allowedHeaders("Authorization", "Content-Type", "X-Empresa-ID", "Accept")
                 .allowCredentials(true);

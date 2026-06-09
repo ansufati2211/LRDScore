@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.services.impl;
 
+import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.models.entities.Categoria;
 import com.rutadelsabor.core.models.entities.Insumo;
 import com.rutadelsabor.core.models.entities.Producto;
@@ -9,7 +10,6 @@ import com.rutadelsabor.core.repositories.InsumoRepository;
 import com.rutadelsabor.core.repositories.ProductoRepository;
 import com.rutadelsabor.core.repositories.RecetaRepository;
 import com.rutadelsabor.core.services.interfaces.IInventarioService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,10 +19,22 @@ import java.util.List;
 @Service
 public class InventarioServiceImpl implements IInventarioService {
 
-    @Autowired private CategoriaRepository categoriaRepository;
-    @Autowired private InsumoRepository insumoRepository;
-    @Autowired private ProductoRepository productoRepository;
-    @Autowired private RecetaRepository recetaRepository;
+    // 1. Declaramos las dependencias como finales e inmutables (Resuelve java:S6813)
+    private final CategoriaRepository categoriaRepository;
+    private final InsumoRepository insumoRepository;
+    private final ProductoRepository productoRepository;
+    private final RecetaRepository recetaRepository;
+
+    // 2. Inyección por Constructor 
+    public InventarioServiceImpl(CategoriaRepository categoriaRepository, 
+                                 InsumoRepository insumoRepository, 
+                                 ProductoRepository productoRepository, 
+                                 RecetaRepository recetaRepository) {
+        this.categoriaRepository = categoriaRepository;
+        this.insumoRepository = insumoRepository;
+        this.productoRepository = productoRepository;
+        this.recetaRepository = recetaRepository;
+    }
 
     @Override
     @Transactional
@@ -63,11 +75,12 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public Receta agregarInsumoAReceta(Long productoId, Long insumoId, BigDecimal cantidad) {
+        // Usamos la excepción especializada de la Fase 1 (Resuelve java:S112)
         Producto producto = productoRepository.findById(productoId)
-                .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado con el ID: " + productoId));
         
         Insumo insumo = insumoRepository.findById(insumoId)
-                .orElseThrow(() -> new RuntimeException("Insumo no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado con el ID: " + insumoId));
 
         Receta receta = new Receta();
         receta.setProducto(producto);
@@ -80,10 +93,8 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional(readOnly = true)
     public List<Receta> obtenerRecetaPorProducto(Long productoId) {
-        // En un escenario ideal tendrías un método findByProductoId en el Repositorio, 
-        // pero por ahora filtramos usando streams de Java para simplificar.
-        return recetaRepository.findAll().stream()
-                .filter(r -> r.getProducto().getId().equals(productoId))
-                .toList();
+        // OPTIMIZACIÓN DE COHESIÓN: Consultamos directamente por el ID a través del repositorio,
+        // evitando cargar toda la entidad Producto si solo necesitamos su ID
+        return recetaRepository.findByProductoId(productoId);
     }
 }

@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -18,13 +18,12 @@ public class SesionCaja extends BaseTenantEntity {
     @JoinColumn(name = "cajero_id", nullable = false)
     private Usuario cajero;
 
-    @Temporal(TemporalType.TIMESTAMP)
+    // Eliminamos @Temporal y cambiamos a LocalDateTime (Resuelve java:S1874)
     @Column(name = "fecha_apertura")
-    private Date fechaApertura;
+    private LocalDateTime fechaApertura;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "fecha_cierre")
-    private Date fechaCierre;
+    private LocalDateTime fechaCierre;
 
     @Column(name = "monto_inicial", nullable = false, precision = 10, scale = 2)
     private BigDecimal montoInicial;

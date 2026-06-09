@@ -3,6 +3,7 @@ package com.rutadelsabor.core.security;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.util.Date;
 
+@Slf4j
 @Component
 public class JwtProvider {
 
@@ -25,15 +27,21 @@ public class JwtProvider {
     }
 
     public String generateJwtToken(Authentication authentication) {
-        UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
+        // Validación defensiva explícita (Resuelve definitivamente java:S2259)
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl userPrincipal)) {
+            throw new IllegalArgumentException("El objeto de autenticación provisto no contiene un principal válido");
+        }
+
+        Date fechaEmision = new Date();
+        Date fechaExpiracion = new Date(fechaEmision.getTime() + jwtExpirationMs);
 
         return Jwts.builder()
                 .subject(userPrincipal.getUsername())
                 .claim("rol", userPrincipal.getAuthorities().iterator().next().getAuthority())
                 .claim("empresaId", userPrincipal.getEmpresaId()) // ¡Dato SaaS Crítico!
                 .claim("usuarioId", userPrincipal.getUsuarioId())
-                .issuedAt(new Date())
-                .expiration(new Date((new Date()).getTime() + jwtExpirationMs))
+                .issuedAt(fechaEmision)
+                .expiration(fechaExpiracion)
                 .signWith(getSigningKey())
                 .compact();
     }
@@ -53,7 +61,7 @@ public class JwtProvider {
             Jwts.parser().verifyWith(getSigningKey()).build().parseSignedClaims(authToken);
             return true;
         } catch (JwtException | IllegalArgumentException e) {
-            System.err.println("Token JWT inválido o expirado: " + e.getMessage());
+            log.error("Token JWT inválido, manipulado o expirado: {}", e.getMessage());
         }
         return false;
     }

@@ -5,7 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,14 +15,19 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+@Slf4j // 1. Soporte para Logs profesionales (Resuelve java:S106)
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
 
-    @Autowired
-    private JwtProvider jwtProvider;
+    // Variables finales e inmutables sin @Autowired de campo (Resuelve java:S6813)
+    private final JwtProvider jwtProvider;
+    private final UserDetailsServiceImpl userDetailsService;
 
-    @Autowired
-    private UserDetailsServiceImpl userDetailsService;
+    // 2. Inyección por Constructor: Alta cohesión arquitectónica
+    public JwtRequestFilter(JwtProvider jwtProvider, UserDetailsServiceImpl userDetailsService) {
+        this.jwtProvider = jwtProvider;
+        this.userDetailsService = userDetailsService;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -48,13 +53,14 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {
-            System.err.println("Error en la autenticación del usuario: " + e.getMessage());
+            // Registro asíncrono y seguro en el Logger del sistema (Resuelve java:S106)
+            log.error("Error en la autenticación del usuario a nivel de filtro de red: {}", e.getMessage());
+        } finally {
+            // 3. LIMPIEZA DE HILO (Movido al bloque finally para garantizar la ejecución pase lo que pase)
+            TenantContext.clear();
         }
 
         filterChain.doFilter(request, response);
-        
-        // 3. LIMPIEZA DE HILO (Muy importante para no cruzar datos en peticiones concurrentes)
-        TenantContext.clear();
     }
 
     private String parseJwt(HttpServletRequest request) {

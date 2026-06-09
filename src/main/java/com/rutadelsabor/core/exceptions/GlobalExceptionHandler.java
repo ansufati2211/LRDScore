@@ -39,10 +39,36 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
     }
 
-    // 3. Cualquier otro error general (Ej. Fallo SQL)
+    // 3. Manejo de Recursos No Encontrados (Código 404)
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<ErrorResponseDTO> handleRecursoNoEncontrado(RecursoNoEncontradoException ex, HttpServletRequest request) {
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                LocalDateTime.now(),
+                HttpStatus.NOT_FOUND.value(),
+                "Recurso No Encontrado",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+    }
+
+    // 4. Manejo de Reglas de Negocio y Stock (Código 400 - Bad Request)
+    @ExceptionHandler({ReglaNegocioException.class, StockInsuficienteException.class})
+    public ResponseEntity<ErrorResponseDTO> handleReglasNegocio(RuntimeException ex, HttpServletRequest request) {
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                "Error de Regla de Negocio",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    // 5. Cualquier otro error general (Ej. Fallo SQL) - SIEMPRE AL FINAL
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDTO> handleGlobalException(Exception ex, HttpServletRequest request) {
-        ex.printStackTrace(); // Imprime el error real en la consola (terminal)
+        ex.printStackTrace(); // Imprime el error real en la terminal para el desarrollador
 
         ErrorResponseDTO error = new ErrorResponseDTO(
                 LocalDateTime.now(),

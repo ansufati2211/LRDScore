@@ -8,8 +8,8 @@ import java.util.List;
 @Getter
 @Setter
 public class PedidoRequestDTO {
-    private String tipoConsumo; // MESA, DELIVERY
     private String mesa;
+    private String tipoConsumo;
     private BigDecimal total;
     private List<PedidoItemDTO> items;
 
@@ -19,5 +19,7 @@ public class PedidoRequestDTO {
         private Long productoId;
         private Integer cantidad;
         private BigDecimal subtotal;
+        // NUEVO: Captura las notas para la cocina (Resuelve Hallazgo KDS)
+        private String notasPreparacion; 
     }
 }

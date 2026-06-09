@@ -4,7 +4,6 @@ import com.rutadelsabor.core.dto.request.LoginRequestDTO;
 import com.rutadelsabor.core.dto.response.AuthResponseDTO;
 import com.rutadelsabor.core.services.interfaces.IAuthService;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,8 +11,15 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    @Autowired
-    private IAuthService authService;
+    // 1. Lo marcamos como final para mayor seguridad
+    private final IAuthService authService;
+
+    // 2. Inyección por Constructor (Resuelve java:S6813)
+    // Ya no hace falta poner @Autowired, Spring Boot lo hace automáticamente 
+    // cuando la clase tiene un solo constructor.
+    public AuthController(IAuthService authService) {
+        this.authService = authService;
+    }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginRequestDTO loginRequest) {
