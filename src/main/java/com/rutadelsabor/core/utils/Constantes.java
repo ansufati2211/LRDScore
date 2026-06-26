@@ -8,12 +8,12 @@ public final class Constantes {
 
     // ROLES
     public static final String ROL_ADMIN = "ROLE_SUPER_ADMIN";
+    public static final String ROL_GERENTE = "ROLE_GERENTE";
     public static final String ROL_CAJERO = "ROLE_CAJERO";
     public static final String ROL_MOZO = "ROLE_MOZO";
-    public static final String ROL_COCINERO = "ROLE_COCINERO";
+    public static final String ROL_COCINA = "ROLE_COCINA";
 
     // ESTADOS DE PEDIDO
-// ESTADOS DE PEDIDO
     public static final String ESTADO_PEDIDO_RECIBIDO = "RECIBIDO";
     public static final String ESTADO_PEDIDO_EN_PREPARACION = "EN_PREPARACION"; 
     public static final String ESTADO_PEDIDO_LISTO = "LISTO";

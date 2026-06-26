@@ -3,6 +3,7 @@ package com.rutadelsabor.core.services.impl;
 import com.rutadelsabor.core.dto.request.PagoItemDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
+import com.rutadelsabor.core.dto.response.PedidoActivoResponseDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.*;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class PedidoServiceImpl implements IPedidoService {
@@ -134,18 +136,56 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public void cancelarPedido(Long id) {
         Pedido p = obtenerPedido(id);
+        if (p.getEstadoActual() == EstadoPedido.EN_PREPARACION || p.getEstadoActual() == EstadoPedido.LISTO) {
+            throw new ReglaNegocioException(
+                "No se puede cancelar un pedido en estado " + p.getEstadoActual() +
+                ". El stock ya fue descontado del inventario. Registre un ajuste manual en /api/inventario/ajustes."
+            );
+        }
+        if (p.getEstadoActual() == EstadoPedido.PAGADO || p.getEstadoActual() == EstadoPedido.ENTREGADO) {
+            throw new ReglaNegocioException("No se puede cancelar un pedido ya " + p.getEstadoActual() + ".");
+        }
         p.setEstadoActual(EstadoPedido.CANCELADO);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Pedido> listarPedidosActivos() {
+    public List<PedidoActivoResponseDTO> listarPedidosActivos() {
         List<EstadoPedido> estadosActivos = java.util.Arrays.asList(
-                EstadoPedido.RECIBIDO, 
-                EstadoPedido.EN_PREPARACION, 
-                EstadoPedido.LISTO, 
+                EstadoPedido.RECIBIDO,
+                EstadoPedido.EN_PREPARACION,
+                EstadoPedido.LISTO,
                 EstadoPedido.ENTREGADO
         );
-        return pedidoRepository.findByEstadoActualInOrderByCreatedAtDesc(estadosActivos);
+        return pedidoRepository.findByEstadoActualInOrderByCreatedAtDesc(estadosActivos)
+                .stream()
+                .map(this::mapToActivoResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    private PedidoActivoResponseDTO mapToActivoResponseDTO(Pedido p) {
+        PedidoActivoResponseDTO dto = new PedidoActivoResponseDTO();
+        dto.setId(p.getId());
+        dto.setMozo(p.getMozo().getNombre());
+        dto.setTipoConsumo(p.getTipoConsumo());
+        dto.setMesa(p.getIdentificadorMesaReferencia());
+        dto.setEstadoActual(p.getEstadoActual().name());
+        dto.setDescuento(p.getDescuento());
+        dto.setTotal(p.getTotal());
+        dto.setFechaCreacion(p.getCreatedAt());
+
+        List<PedidoActivoResponseDTO.DetallePlanoDTO> items = p.getDetalles().stream().map(d -> {
+            PedidoActivoResponseDTO.DetallePlanoDTO item = new PedidoActivoResponseDTO.DetallePlanoDTO();
+            item.setProductoId(d.getProducto().getId());
+            item.setNombreProducto(d.getProducto().getNombre());
+            item.setCantidad(d.getCantidad());
+            item.setPrecioUnitario(d.getPrecioUnitario());
+            item.setSubtotal(d.getSubtotal());
+            item.setNotasPreparacion(d.getNotasPreparacion());
+            return item;
+        }).collect(Collectors.toList());
+
+        dto.setItems(items);
+        return dto;
     }
 }

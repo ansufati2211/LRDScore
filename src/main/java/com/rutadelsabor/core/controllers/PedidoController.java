@@ -2,6 +2,7 @@ package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
+import com.rutadelsabor.core.dto.response.PedidoActivoResponseDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.models.entities.Pedido;
 import com.rutadelsabor.core.models.entities.Usuario;
@@ -65,7 +66,7 @@ public class PedidoController {
 
     @GetMapping("/activos")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<List<Pedido>> listarPedidosActivos() {
+    public ResponseEntity<List<PedidoActivoResponseDTO>> listarPedidosActivos() {
         return ResponseEntity.ok(pedidoService.listarPedidosActivos());
     }
 

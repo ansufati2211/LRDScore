@@ -2,9 +2,11 @@ package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.dto.request.SesionCajaRequestDTO;
 import com.rutadelsabor.core.models.entities.SesionCaja;
+import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.ICajaService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,8 +21,9 @@ public class CajaController {
     }
 
     @PostMapping("/abrir")
-    public ResponseEntity<SesionCaja> abrirCaja(@RequestBody SesionCajaRequestDTO dto) {
-        return ResponseEntity.ok(cajaService.abrirCaja(dto.getCajeroId(), dto.getMontoInicial()));
+    public ResponseEntity<SesionCaja> abrirCaja(@RequestBody SesionCajaRequestDTO dto, Authentication auth) {
+        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
+        return ResponseEntity.ok(cajaService.abrirCaja(cajero.getUsuarioId(), dto.getMontoInicial()));
     }
 
     @PutMapping("/cerrar/{id}")
@@ -28,8 +31,9 @@ public class CajaController {
         return ResponseEntity.ok(cajaService.cerrarCaja(id, dto.getMontoFinalDeclarado()));
     }
 
-    @GetMapping("/activa/{cajeroId}")
-    public ResponseEntity<SesionCaja> obtenerCajaActiva(@PathVariable Long cajeroId) {
-        return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(cajeroId));
+    @GetMapping("/activa")
+    public ResponseEntity<SesionCaja> obtenerCajaActiva(Authentication auth) {
+        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
+        return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(cajero.getUsuarioId()));
     }
 }
