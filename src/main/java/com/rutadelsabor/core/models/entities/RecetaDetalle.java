@@ -24,4 +24,7 @@ public class RecetaDetalle extends BaseTenantEntity {
 
     @Column(name = "unidad_medida", length = 20)
     private String unidadMedida;
+
+    @Column(name = "estado_registro")
+    private Boolean estadoRegistro = true;
 }

@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.services.impl;
 
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
+import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.Pedido;
 import com.rutadelsabor.core.models.entities.VwKdsCocina;
 import com.rutadelsabor.core.models.enums.EstadoPedido;
@@ -26,13 +27,15 @@ public class KdsServiceImpl implements IKdsService {
     @Override
     @Transactional(readOnly = true)
     public List<VwKdsCocina> obtenerPedidosPendientes() {
-        return kdsRepository.findAll(); // La vista ya filtra solo RECIBIDO y EN_PREPARACION
+        // La vista vw_kds_cocina ya filtra por estado RECIBIDO y EN_PREPARACION
+        return kdsRepository.findAll();
     }
 
     @Override
     @Transactional
     public void marcarPreparando(Long pedidoId, Long usuarioId) {
-        // Ejecuta el SP "sp_iniciar_preparacion" que descuenta stock en cascada según la receta
+        // SP valida estado RECIBIDO, descuenta stock por receta y escribe Kardex atómicamente.
+        // Si stock insuficiente, lanza excepción y hace rollback.
         pedidoRepository.iniciarPreparacionYDescontarStock(pedidoId, usuarioId);
     }
 
@@ -41,7 +44,11 @@ public class KdsServiceImpl implements IKdsService {
     public void marcarListo(Long pedidoId) {
         Pedido pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pedido con ID " + pedidoId + " no encontrado"));
-        
+
+        if (pedido.getEstadoActual() != EstadoPedido.EN_PREPARACION) {
+            throw new ReglaNegocioException("Solo se puede marcar como LISTO un pedido que está EN_PREPARACION.");
+        }
+
         pedido.setEstadoActual(EstadoPedido.LISTO);
         pedidoRepository.save(pedido);
     }

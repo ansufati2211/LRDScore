@@ -8,7 +8,7 @@ import java.util.List;
 
 @Repository
 public interface VwKdsCocinaRepository extends JpaRepository<VwKdsCocina, Long> {
-    
-    // Busca los pedidos que estén en ciertos estados y los ordena por el más antiguo primero
-    List<VwKdsCocina> findByEstadoPedidoInOrderByFechaPedidoAsc(List<String> estados);
+
+    // FIFO: los pedidos más antiguos aparecen primero en cocina
+    List<VwKdsCocina> findByEstadoPedidoInOrderByHoraIngresoAsc(List<String> estados);
 }

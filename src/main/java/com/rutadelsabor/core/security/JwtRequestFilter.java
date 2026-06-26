@@ -28,10 +28,10 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest request, 
-                                    @NonNull HttpServletResponse response, 
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
-        
+
         final String authorizationHeader = request.getHeader("Authorization");
 
         try {
@@ -49,14 +49,16 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(authToken);
 
                         Long empresaId = jwtProvider.extractEmpresaId(jwt);
-                        // FIX: Pasamos el Long directamente como lo exige la clase TenantContext
-                        TenantContext.setCurrentTenant(empresaId); 
+                        TenantContext.setCurrentTenant(empresaId);
                     }
                 }
             }
+            // FIX: doFilter va DENTRO del try para que finally se ejecute DESPUÉS de que el
+            // controlador procesó el request completo, no antes.
             filterChain.doFilter(request, response);
-            
+
         } finally {
+            // LIMPIEZA DE HILO: se ejecuta siempre, garantiza que el ThreadLocal no se filtre.
             TenantContext.clear();
         }
     }

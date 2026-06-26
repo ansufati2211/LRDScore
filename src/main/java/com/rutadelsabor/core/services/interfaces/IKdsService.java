@@ -5,6 +5,6 @@ import java.util.List;
 
 public interface IKdsService {
     List<VwKdsCocina> obtenerPedidosPendientes();
-    void marcarPreparando(Long pedidoId, Long usuarioId); // Modificado para el SP
+    void marcarPreparando(Long pedidoId, Long usuarioId);
     void marcarListo(Long pedidoId);
 }

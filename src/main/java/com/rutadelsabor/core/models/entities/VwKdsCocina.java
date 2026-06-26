@@ -7,13 +7,14 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.Immutable;
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "vw_kds_cocina")
 @Getter
 @Setter
-@Immutable // Protege la vista de modificaciones accidentales
+@Immutable
 public class VwKdsCocina {
 
     @Id
@@ -42,10 +43,10 @@ public class VwKdsCocina {
     private String notasGenerales;
 
     @Column(name = "hora_ingreso")
-    private LocalDateTime horaIngreso;
+    private OffsetDateTime horaIngreso;
 
     @Column(name = "minutos_transcurridos")
-    private Long minutosTranscurridos;
+    private Double minutosTranscurridos;
 
     @Column(name = "cantidad")
     private Integer cantidad;

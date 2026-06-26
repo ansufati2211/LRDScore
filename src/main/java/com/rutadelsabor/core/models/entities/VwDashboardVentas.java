@@ -17,6 +17,8 @@ import java.time.LocalDate;
 @Immutable
 public class VwDashboardVentas {
 
+    // La vista genera este ID con ROW_NUMBER() OVER(ORDER BY fecha, empresa_id).
+    // Garantiza unicidad multi-tenant: dos empresas el mismo día tienen IDs distintos.
     @Id
     @Column(name = "id")
     private Long id;

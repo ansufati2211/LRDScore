@@ -24,8 +24,6 @@ public class InventarioController {
         this.usuarioRepository = usuarioRepository;
     }
 
-    // --- NUEVOS ENDPOINTS DE KARDEX ---
-    
     @PostMapping("/entradas")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> registrarEntrada(@RequestBody EntradaAlmacenRequestDTO dto, Authentication auth) {

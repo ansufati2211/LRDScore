@@ -10,4 +10,5 @@ public class RecetaRequestDTO {
     private Long productoId;
     private Long insumoId;
     private BigDecimal cantidadRequerida;
+    private String unidadMedida;
 }

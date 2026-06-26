@@ -18,15 +18,17 @@ import java.util.List;
 @Service
 public class InventarioServiceImpl implements IInventarioService {
 
+    private static final String INSUMO_NO_ENCONTRADO = "Insumo no encontrado";
+
     private final CategoriaRepository categoriaRepository;
     private final InsumoRepository insumoRepository;
     private final ProductoRepository productoRepository;
     private final RecetaDetalleRepository recetaDetalleRepository;
     private final KardexMovimientoRepository kardexRepository;
 
-    public InventarioServiceImpl(CategoriaRepository categoriaRepository, 
-                                 InsumoRepository insumoRepository, 
-                                 ProductoRepository productoRepository, 
+    public InventarioServiceImpl(CategoriaRepository categoriaRepository,
+                                 InsumoRepository insumoRepository,
+                                 ProductoRepository productoRepository,
                                  RecetaDetalleRepository recetaDetalleRepository,
                                  KardexMovimientoRepository kardexRepository) {
         this.categoriaRepository = categoriaRepository;
@@ -63,8 +65,10 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public RecetaDetalle agregarInsumoAReceta(Long productoId, Long insumoId, BigDecimal cantidad, String unidadMedida) {
-        Producto producto = productoRepository.findById(productoId).orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado"));
-        Insumo insumo = insumoRepository.findById(insumoId).orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado"));
+        Producto producto = productoRepository.findById(productoId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado con el ID: " + productoId));
+        Insumo insumo = insumoRepository.findById(insumoId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado con el ID: " + insumoId));
 
         RecetaDetalle receta = new RecetaDetalle();
         receta.setProducto(producto);
@@ -86,16 +90,17 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public void registrarEntrada(EntradaAlmacenRequestDTO dto, Usuario usuario) {
-        Insumo insumo = insumoRepository.findById(dto.getInsumoId()).orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado"));
-        
+        Insumo insumo = insumoRepository.findById(dto.getInsumoId())
+                .orElseThrow(() -> new RecursoNoEncontradoException(INSUMO_NO_ENCONTRADO));
+
         BigDecimal stockAnterior = insumo.getStockActual();
         BigDecimal stockPosterior = stockAnterior.add(dto.getCantidad());
-        
+
         // Cálculo de Promedio Ponderado para el nuevo Costo Unitario
         BigDecimal valorAnterior = stockAnterior.multiply(insumo.getCostoUnitario() != null ? insumo.getCostoUnitario() : BigDecimal.ZERO);
         BigDecimal valorNuevo = dto.getCantidad().multiply(dto.getCostoUnitario());
         BigDecimal nuevoCostoUnitario = valorAnterior.add(valorNuevo).divide(stockPosterior, 2, RoundingMode.HALF_UP);
-        
+
         insumo.setStockActual(stockPosterior);
         insumo.setCostoUnitario(nuevoCostoUnitario);
         insumoRepository.save(insumo);
@@ -106,15 +111,16 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public void registrarMerma(MermaRequestDTO dto, Usuario usuario) {
-        Insumo insumo = insumoRepository.findById(dto.getInsumoId()).orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado"));
-        
+        Insumo insumo = insumoRepository.findById(dto.getInsumoId())
+                .orElseThrow(() -> new RecursoNoEncontradoException(INSUMO_NO_ENCONTRADO));
+
         if (insumo.getStockActual().compareTo(dto.getCantidad()) < 0) {
             throw new ReglaNegocioException("Stock insuficiente para registrar merma");
         }
-        
+
         BigDecimal stockAnterior = insumo.getStockActual();
         BigDecimal stockPosterior = stockAnterior.subtract(dto.getCantidad());
-        
+
         insumo.setStockActual(stockPosterior);
         insumoRepository.save(insumo);
 
@@ -124,10 +130,14 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public void registrarAjuste(AjusteInventarioRequestDTO dto, Usuario usuario) {
-        Insumo insumo = insumoRepository.findById(dto.getInsumoId()).orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado"));
+        Insumo insumo = insumoRepository.findById(dto.getInsumoId())
+                .orElseThrow(() -> new RecursoNoEncontradoException(INSUMO_NO_ENCONTRADO));
+
         BigDecimal stockAnterior = insumo.getStockActual();
-        BigDecimal stockPosterior = dto.getEsPositivo() ? stockAnterior.add(dto.getCantidad()) : stockAnterior.subtract(dto.getCantidad());
-        
+        BigDecimal stockPosterior = dto.getEsPositivo()
+                ? stockAnterior.add(dto.getCantidad())
+                : stockAnterior.subtract(dto.getCantidad());
+
         if (stockPosterior.compareTo(BigDecimal.ZERO) < 0) {
             throw new ReglaNegocioException("El ajuste dejaría el stock en negativo");
         }
@@ -139,7 +149,9 @@ public class InventarioServiceImpl implements IInventarioService {
         registrarMovimientoKardex(insumo, tipo, dto.getCantidad(), stockAnterior, stockPosterior, insumo.getCostoUnitario(), usuario, dto.getMotivo());
     }
 
-    private void registrarMovimientoKardex(Insumo insumo, String tipo, BigDecimal cantidad, BigDecimal ant, BigDecimal post, BigDecimal costo, Usuario usr, String obs) {
+    @SuppressWarnings("java:S107")
+    private void registrarMovimientoKardex(Insumo insumo, String tipo, BigDecimal cantidad,
+            BigDecimal ant, BigDecimal post, BigDecimal costo, Usuario usr, String obs) {
         KardexMovimiento kardex = new KardexMovimiento();
         kardex.setInsumo(insumo);
         kardex.setTipoMovimiento(tipo);
