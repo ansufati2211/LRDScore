@@ -1,9 +1,8 @@
 package com.rutadelsabor.core.controllers;
 
-import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
+import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
-import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.Pedido;
 import com.rutadelsabor.core.models.entities.Usuario;
 import com.rutadelsabor.core.repositories.UsuarioRepository;
@@ -11,6 +10,7 @@ import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IPedidoService;
 import com.rutadelsabor.core.services.reportes.TicketManager;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,52 +27,61 @@ public class PedidoController {
     public PedidoController(IPedidoService pedidoService, UsuarioRepository usuarioRepository, TicketManager ticketManager) {
         this.pedidoService = pedidoService;
         this.usuarioRepository = usuarioRepository;
-        this.ticketManager = ticketManager; 
+        this.ticketManager = ticketManager;
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
     public ResponseEntity<Pedido> crearPedido(@RequestBody PedidoRequestDTO dto, Authentication auth) {
         Usuario mozo = usuarioRepository.findByCorreo(auth.getName())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario mozo autenticado no encontrado con el correo: " + auth.getName()));
-                
+                .orElseThrow(() -> new RecursoNoEncontradoException("Mozo no encontrado"));
         return ResponseEntity.ok(pedidoService.crearPedido(dto, mozo));
     }
 
+    @PutMapping("/{id}/confirmar")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<String> confirmarPedido(@PathVariable Long id) {
+        pedidoService.confirmarPedido(id);
+        return ResponseEntity.ok("Pedido confirmado y enviado a cocina.");
+    }
+
+    @PutMapping("/{id}/entregar")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<String> entregarPedido(@PathVariable Long id) {
+        pedidoService.entregarPedido(id);
+        return ResponseEntity.ok("Pedido marcado como entregado a la mesa.");
+    }
+
     @PostMapping("/{id}/pagar")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
     public ResponseEntity<String> procesarPago(
             @PathVariable Long id, 
             @RequestBody PagoRequestDTO pago, 
             Authentication auth) {
-        
-        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl cajero)) {
-            throw new ReglaNegocioException("Acceso denegado: Usuario no autenticado o token inválido.");
-        }
-        
+        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
         pedidoService.procesarPago(id, pago, cajero.getUsuarioId());
-        
-        return ResponseEntity.ok("Pago registrado exitosamente. Stock actualizado en sede.");
+        return ResponseEntity.ok("Pago registrado exitosamente.");
     }
 
-    @GetMapping("/{id}/ticket")
-    public ResponseEntity<String> imprimirTicket(@PathVariable Long id) {
-        Pedido pedido = pedidoService.obtenerPedido(id);
-        String comprobante = ticketManager.generarTicketTermico(pedido);
-        
-        return ResponseEntity.ok()
-                .contentType(org.springframework.http.MediaType.TEXT_PLAIN)
-                .body(comprobante);
-    }
-
-    // NUEVO ENDPOINT 1: Lista todos los pedidos "vivos" para que el cajero sepa qué cobrar
     @GetMapping("/activos")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_COCINA')")
     public ResponseEntity<List<Pedido>> listarPedidosActivos() {
         return ResponseEntity.ok(pedidoService.listarPedidosActivos());
     }
 
-    // NUEVO ENDPOINT 2: Expone a la red la anulación de un pedido
     @PutMapping("/{id}/cancelar")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> cancelarPedido(@PathVariable Long id) {
         pedidoService.cancelarPedido(id);
-        return ResponseEntity.ok("El pedido ha sido anulado y retirado de la cola de preparación.");
+        return ResponseEntity.ok("Pedido anulado exitosamente.");
+    }
+
+    @GetMapping("/{id}/ticket")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    public ResponseEntity<String> imprimirTicket(@PathVariable Long id) {
+        Pedido pedido = pedidoService.obtenerPedido(id);
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.TEXT_PLAIN)
+                .body(ticketManager.generarTicketTermico(pedido));
     }
 }

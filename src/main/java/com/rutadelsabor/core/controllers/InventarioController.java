@@ -1,100 +1,57 @@
 package com.rutadelsabor.core.controllers;
 
-import com.rutadelsabor.core.dto.request.CategoriaRequestDTO;
-import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
-import com.rutadelsabor.core.dto.request.ProductoRequestDTO;
-import com.rutadelsabor.core.dto.request.RecetaRequestDTO;
-import com.rutadelsabor.core.models.entities.Categoria;
-import com.rutadelsabor.core.models.entities.Insumo;
-import com.rutadelsabor.core.models.entities.Producto;
-import com.rutadelsabor.core.models.entities.Receta;
+import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
+import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
+import com.rutadelsabor.core.dto.request.MermaRequestDTO;
+import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
+import com.rutadelsabor.core.models.entities.Usuario;
+import com.rutadelsabor.core.repositories.UsuarioRepository;
 import com.rutadelsabor.core.services.interfaces.IInventarioService;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/inventario")
 public class InventarioController {
 
-    // 1. Variable final y sin @Autowired (Resuelve java:S6813)
     private final IInventarioService inventarioService;
+    private final UsuarioRepository usuarioRepository;
 
-    // 2. Inyección por Constructor
-    public InventarioController(IInventarioService inventarioService) {
+    public InventarioController(IInventarioService inventarioService, UsuarioRepository usuarioRepository) {
         this.inventarioService = inventarioService;
+        this.usuarioRepository = usuarioRepository;
     }
 
-    // --- CATEGORÍAS ---
-    @PostMapping("/categorias")
-    // 3. Usamos DTO para proteger la Entidad (Resuelve java:S4684)
-    public ResponseEntity<Categoria> crearCategoria(@RequestBody CategoriaRequestDTO request) {
-        Categoria categoria = new Categoria();
-        categoria.setNombre(request.getNombre());
-        
-        return new ResponseEntity<>(inventarioService.crearCategoria(categoria), HttpStatus.CREATED);
+    // --- NUEVOS ENDPOINTS DE KARDEX ---
+    
+    @PostMapping("/entradas")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> registrarEntrada(@RequestBody EntradaAlmacenRequestDTO dto, Authentication auth) {
+        Usuario usr = obtenerUsuarioAuth(auth);
+        inventarioService.registrarEntrada(dto, usr);
+        return ResponseEntity.ok("Entrada registrada y Kardex actualizado (Promedio Ponderado recalculado).");
     }
 
-    @GetMapping("/categorias")
-    public ResponseEntity<List<Categoria>> listarCategorias() {
-        return ResponseEntity.ok(inventarioService.listarCategorias());
+    @PostMapping("/mermas")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> registrarMerma(@RequestBody MermaRequestDTO dto, Authentication auth) {
+        Usuario usr = obtenerUsuarioAuth(auth);
+        inventarioService.registrarMerma(dto, usr);
+        return ResponseEntity.ok("Merma registrada y stock descontado exitosamente.");
     }
 
-    // --- INSUMOS ---
-    @PostMapping("/insumos")
-    // 3. Usamos DTO para proteger la Entidad (Resuelve java:S4684)
-    public ResponseEntity<Insumo> crearInsumo(@RequestBody InsumoRequestDTO request) {
-        Insumo insumo = new Insumo();
-        insumo.setNombre(request.getNombre());
-        insumo.setUnidadMedida(request.getUnidadMedida());
-        insumo.setStockActual(request.getStockActual());
-        
-        return new ResponseEntity<>(inventarioService.crearInsumo(insumo), HttpStatus.CREATED);
+    @PostMapping("/ajustes")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> registrarAjuste(@RequestBody AjusteInventarioRequestDTO dto, Authentication auth) {
+        Usuario usr = obtenerUsuarioAuth(auth);
+        inventarioService.registrarAjuste(dto, usr);
+        return ResponseEntity.ok("Ajuste de inventario aplicado exitosamente.");
     }
 
-    @GetMapping("/insumos")
-    public ResponseEntity<List<Insumo>> listarInsumos() {
-        return ResponseEntity.ok(inventarioService.listarInsumos());
-    }
-
-    // --- PRODUCTOS ---
-    @PostMapping("/productos")
-    // 3. Usamos DTO para proteger la Entidad (Resuelve java:S4684)
-    public ResponseEntity<Producto> crearProducto(@RequestBody ProductoRequestDTO request) {
-        Producto producto = new Producto();
-        producto.setNombre(request.getNombre());
-        producto.setPrecioVenta(request.getPrecioVenta());
-        producto.setTagsBusqueda(request.getTagsBusqueda());
-        
-        // Mapeamos la relación con la Categoría solo usando su ID
-        Categoria categoriaRef = new Categoria();
-        categoriaRef.setId(request.getCategoriaId());
-        producto.setCategoria(categoriaRef);
-        
-        return new ResponseEntity<>(inventarioService.crearProducto(producto), HttpStatus.CREATED);
-    }
-
-    @GetMapping("/productos")
-    public ResponseEntity<List<Producto>> listarProductos() {
-        return ResponseEntity.ok(inventarioService.listarProductos());
-    }
-
-    // --- RECETAS ---
-    @PostMapping("/recetas")
-    // Unificamos usando el RecetaRequestDTO que ya existía en tu proyecto
-    public ResponseEntity<Receta> agregarInsumoAReceta(@RequestBody RecetaRequestDTO request) {
-        Receta receta = inventarioService.agregarInsumoAReceta(
-                request.getProductoId(), 
-                request.getInsumoId(), 
-                request.getCantidadRequerida()
-        );
-        return new ResponseEntity<>(receta, HttpStatus.CREATED);
-    }
-
-    @GetMapping("/recetas/{productoId}")
-    public ResponseEntity<List<Receta>> verReceta(@PathVariable Long productoId) {
-        return ResponseEntity.ok(inventarioService.obtenerRecetaPorProducto(productoId));
+    private Usuario obtenerUsuarioAuth(Authentication auth) {
+        return usuarioRepository.findByCorreo(auth.getName())
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado en el sistema"));
     }
 }

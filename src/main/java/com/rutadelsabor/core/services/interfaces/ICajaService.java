@@ -6,5 +6,7 @@ import java.math.BigDecimal;
 public interface ICajaService {
     SesionCaja abrirCaja(Long cajeroId, BigDecimal montoInicial);
     SesionCaja cerrarCaja(Long sesionCajaId, BigDecimal montoFinalDeclarado);
-    SesionCaja obtenerCajaActiva(Long cajeroId);
+    
+    // El método que el controlador estaba buscando
+    SesionCaja obtenerCajaActivaPorCajero(Long cajeroId); 
 }

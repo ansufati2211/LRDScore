@@ -10,8 +10,11 @@ public interface IPedidoService {
     Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo);
     Pedido obtenerPedido(Long id);
     void cancelarPedido(Long id);
-    void procesarPago(Long pedidoId, PagoRequestDTO pagoDTO, Long cajeroId);
     
-    // NUEVA FIRMA: Para el listado de pedidos vivos en el restaurante
+    // Nuevas firmas para el control de estados del Mozo
+    void confirmarPedido(Long id); // Pasa de BORRADOR a RECIBIDO
+    void entregarPedido(Long id);  // Pasa de LISTO a ENTREGADO
+    
+    void procesarPago(Long pedidoId, PagoRequestDTO pagoDTO, Long cajeroId);
     List<Pedido> listarPedidosActivos();
 }

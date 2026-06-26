@@ -26,7 +26,6 @@ public class ReporteServiceImpl implements IReporteService {
 
     @Override
     public DashboardVentasDTO obtenerResumenVentas(LocalDate inicio, LocalDate fin) {
-        // TAREA COMPLETADA (Resuelve java:S1135): Validación cohesionada de rango de fechas
         validarRangoFechas(inicio, fin);
 
         List<VwDashboardVentas> ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
@@ -38,8 +37,9 @@ public class ReporteServiceImpl implements IReporteService {
                 .map(VwDashboardVentas::getTotalIngresos)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
-        Integer totalPedidos = ventas.stream()
-                .mapToInt(VwDashboardVentas::getCantidadPedidos)
+        // SOLUCIÓN AL ERROR: Cambiamos mapToInt por mapToLong y usamos Long
+        Long totalPedidos = ventas.stream()
+                .mapToLong(VwDashboardVentas::getCantidadPedidos)
                 .sum();
 
         // Mapeo y recolección optimizada con .toList() nativo de Java
@@ -60,7 +60,6 @@ public class ReporteServiceImpl implements IReporteService {
 
     @Override
     public byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin) {
-        // TAREA COMPLETADA (Resuelve java:S1135): Reutilizamos la validación para la exportación
         validarRangoFechas(inicio, fin);
 
         List<VwDashboardVentas> ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);

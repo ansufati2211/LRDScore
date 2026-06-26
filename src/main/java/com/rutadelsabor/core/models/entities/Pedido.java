@@ -4,46 +4,48 @@ import com.rutadelsabor.core.models.enums.EstadoPedido;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-@Getter
-@Setter
 @Entity
 @Table(name = "pedidos")
+@Getter
+@Setter
 public class Pedido extends BaseTenantEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mozo_id", nullable = false)
+    private Usuario mozo;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cliente_id")
     private Cliente cliente;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "mozo_id", nullable = false)
-    private Usuario mozo;
+    @JoinColumn(name = "sesion_caja_id")
+    private SesionCaja sesionCaja;
 
-    // Se autogenera en PostgreSQL (SERIAL)
-    @Column(name = "numero_orden", insertable = false, updatable = false)
-    private Integer numeroOrden;
+    @Column(name = "tipo_consumo", nullable = false, length = 50)
+    private String tipoConsumo;
 
-    @Column(name = "tipo_consumo", nullable = false, length = 20)
-    private String tipoConsumo; // MESA, DELIVERY, PARA_LLEVAR
-
-    @Column(name = "identificador_mesa_referencia", length = 100)
+    @Column(name = "identificador_mesa_referencia", length = 50)
     private String identificadorMesaReferencia;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado_actual", nullable = false, length = 30)
-    private EstadoPedido estadoActual = EstadoPedido.BORRADOR;
+    @Column(name = "estado_actual", nullable = false, length = 50)
+    private EstadoPedido estadoActual;
 
-    @Column(precision = 10, scale = 2)
+    @Column(name = "numero_orden")
+    private Integer numeroOrden;
+
+    @Column(name = "subtotal", nullable = false)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
-    @Column(name = "costo_delivery", precision = 10, scale = 2)
-    private BigDecimal costoDelivery = BigDecimal.ZERO;
+    @Column(name = "descuento")
+    private BigDecimal descuento = BigDecimal.ZERO;
 
-    @Column(precision = 10, scale = 2)
+    @Column(name = "total", nullable = false)
     private BigDecimal total = BigDecimal.ZERO;
 
     @Column(name = "notas_generales", columnDefinition = "TEXT")
@@ -52,7 +54,6 @@ public class Pedido extends BaseTenantEntity {
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
 
-    // Relación para traer los platos de la orden
-    @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PedidoDetalle> detalles = new ArrayList<>();
 }

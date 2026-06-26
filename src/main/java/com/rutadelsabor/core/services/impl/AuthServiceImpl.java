@@ -14,11 +14,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthServiceImpl implements IAuthService {
 
-    // 1. Variables inmutables sin @Autowired de campo (Resuelve java:S6813)
     private final AuthenticationManager authenticationManager;
     private final JwtProvider jwtProvider;
 
-    // 2. Inyección por Constructor: Consistencia absoluta en el Core del sistema
     public AuthServiceImpl(AuthenticationManager authenticationManager, JwtProvider jwtProvider) {
         this.authenticationManager = authenticationManager;
         this.jwtProvider = jwtProvider;
@@ -27,21 +25,19 @@ public class AuthServiceImpl implements IAuthService {
     @Override
     public AuthResponseDTO autenticarUsuario(LoginRequestDTO loginRequest) {
         // 1. Validar credenciales contra la base de datos (BCrypt)
-        // Si falla, Spring Security lanza una excepción y nunca pasa de aquí
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getCorreo(), loginRequest.getPassword()));
 
         // 2. Establecer el contexto de seguridad
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        // 3. Generar el Token JWT con el empresa_id inyectado
-        String jwt = jwtProvider.generateJwtToken(authentication);
-
-        // 4. Programación Defensiva Optimizada (Resuelve java:S2589)
-        // Ya no validamos si authentication es null, solo evaluamos el tipo del Principal
+        // 3. Extraer el Principal ANTES de generar el token para obtener empresaId y usuarioId
         if (!(authentication.getPrincipal() instanceof UserDetailsImpl userDetails)) {
             throw new IllegalArgumentException("El proceso de autenticación no generó un principal válido");
         }
+
+        // 4. Generar el Token JWT usando la firma actualizada del JwtProvider
+        String jwt = jwtProvider.generateToken(authentication, userDetails.getEmpresaId(), userDetails.getUsuarioId());
 
         String rol = userDetails.getAuthorities().iterator().next().getAuthority();
 

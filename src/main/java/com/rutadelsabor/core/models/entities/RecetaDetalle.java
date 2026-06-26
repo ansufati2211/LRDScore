@@ -5,11 +5,11 @@ import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
 
+@Entity
+@Table(name = "receta_detalles")
 @Getter
 @Setter
-@Entity
-@Table(name = "recetas")
-public class Receta extends BaseTenantEntity {
+public class RecetaDetalle extends BaseTenantEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "producto_id", nullable = false)
@@ -19,9 +19,9 @@ public class Receta extends BaseTenantEntity {
     @JoinColumn(name = "insumo_id", nullable = false)
     private Insumo insumo;
 
-    @Column(name = "cantidad_requerida", nullable = false, precision = 10, scale = 2)
+    @Column(name = "cantidad_requerida", nullable = false)
     private BigDecimal cantidadRequerida;
 
-    @Column(name = "estado_registro")
-    private Boolean estadoRegistro = true;
+    @Column(name = "unidad_medida", length = 20)
+    private String unidadMedida;
 }

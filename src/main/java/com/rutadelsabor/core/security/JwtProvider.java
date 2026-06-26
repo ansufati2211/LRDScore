@@ -1,17 +1,18 @@
 package com.rutadelsabor.core.security;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.function.Function;
 
-@Slf4j
 @Component
 public class JwtProvider {
 
@@ -21,48 +22,61 @@ public class JwtProvider {
     @Value("${jwt.expiration}")
     private int jwtExpirationMs;
 
+    // Genera la llave segura a partir de la propiedad Base64
     private SecretKey getSigningKey() {
         byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateJwtToken(Authentication authentication) {
-        // Validación defensiva explícita (Resuelve definitivamente java:S2259)
-        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl userPrincipal)) {
-            throw new IllegalArgumentException("El objeto de autenticación provisto no contiene un principal válido");
-        }
-
-        Date fechaEmision = new Date();
-        Date fechaExpiracion = new Date(fechaEmision.getTime() + jwtExpirationMs);
+    // Generador de Token (usado en el AuthController)
+    public String generateToken(Authentication authentication, Long empresaId, Long usuarioId) {
+        UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
 
         return Jwts.builder()
                 .subject(userPrincipal.getUsername())
                 .claim("rol", userPrincipal.getAuthorities().iterator().next().getAuthority())
-                .claim("empresaId", userPrincipal.getEmpresaId()) // ¡Dato SaaS Crítico!
-                .claim("usuarioId", userPrincipal.getUsuarioId())
-                .issuedAt(fechaEmision)
-                .expiration(fechaExpiracion)
+                .claim("empresaId", empresaId)
+                .claim("usuarioId", usuarioId)
+                .issuedAt(new Date())
+                .expiration(new Date((new Date()).getTime() + jwtExpirationMs))
                 .signWith(getSigningKey())
                 .compact();
     }
 
-    public String getUsernameFromToken(String token) {
-        return Jwts.parser().verifyWith(getSigningKey()).build()
-                .parseSignedClaims(token).getPayload().getSubject();
+    // --- MÉTODOS PARA EL FILTRO (Extractores) ---
+    
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
     }
 
-    public Long getEmpresaIdFromToken(String token) {
-        return Jwts.parser().verifyWith(getSigningKey()).build()
-                .parseSignedClaims(token).getPayload().get("empresaId", Long.class);
+    public Long extractEmpresaId(String token) {
+        return extractClaim(token, claims -> claims.get("empresaId", Long.class));
     }
 
-    public boolean validateJwtToken(String authToken) {
-        try {
-            Jwts.parser().verifyWith(getSigningKey()).build().parseSignedClaims(authToken);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            log.error("Token JWT inválido, manipulado o expirado: {}", e.getMessage());
-        }
-        return false;
+    public boolean validateToken(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
+
+    // Funciones utilitarias internas
+    private boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    private Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    private <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

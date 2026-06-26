@@ -9,7 +9,7 @@ import java.util.List;
 @Setter
 public class DashboardVentasDTO {
     private BigDecimal ingresosTotalesMensuales;
-    private Integer pedidosTotalesMensuales;
+    private Long pedidosTotalesMensuales; // Modificado a Long
     private List<DetalleDiaDTO> detalleDiario;
 
     @Getter
@@ -17,6 +17,6 @@ public class DashboardVentasDTO {
     public static class DetalleDiaDTO {
         private String fecha;
         private BigDecimal ingresos;
-        private Integer pedidos;
+        private Long pedidos; // Modificado a Long
     }
 }

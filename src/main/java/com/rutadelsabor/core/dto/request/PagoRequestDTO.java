@@ -2,15 +2,11 @@ package com.rutadelsabor.core.dto.request;
 
 import lombok.Getter;
 import lombok.Setter;
-import java.math.BigDecimal;
+import java.util.List;
 
 @Getter
 @Setter
 public class PagoRequestDTO {
     private Long sesionCajaId;
-    private String metodoPago; // Ya es String, mapea perfecto a la BD
-    private BigDecimal monto;  // Estandarizado como 'monto'
-    private String numeroYape;
-    private String ultimosDigitos;
-    private String titular;
+    private List<PagoItemDTO> pagos; // Permite pagar 10.00 en Efectivo y 2.50 con Yape
 }

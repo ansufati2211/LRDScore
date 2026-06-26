@@ -4,37 +4,39 @@ import com.rutadelsabor.core.models.enums.EstadoCaja;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Getter
-@Setter
 @Entity
 @Table(name = "sesiones_caja")
+@Getter
+@Setter
 public class SesionCaja extends BaseTenantEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cajero_id", nullable = false)
     private Usuario cajero;
 
-    // Eliminamos @Temporal y cambiamos a LocalDateTime (Resuelve java:S1874)
     @Column(name = "fecha_apertura")
     private LocalDateTime fechaApertura;
 
     @Column(name = "fecha_cierre")
     private LocalDateTime fechaCierre;
 
-    @Column(name = "monto_inicial", nullable = false, precision = 10, scale = 2)
+    @Column(name = "monto_inicial", nullable = false)
     private BigDecimal montoInicial;
 
-    @Column(name = "monto_final_calculado", precision = 10, scale = 2)
-    private BigDecimal montoFinalCalculado;
+    @Column(name = "monto_final_calculado")
+    private BigDecimal montoFinalCalculado = BigDecimal.ZERO;
 
-    @Column(name = "monto_final_declarado", precision = 10, scale = 2)
+    @Column(name = "monto_final_declarado")
     private BigDecimal montoFinalDeclarado;
 
+    // Columna generada por Base de Datos. Le decimos a Hibernate que no intente insertarla ni actualizarla.
+    @Column(name = "diferencia", insertable = false, updatable = false)
+    private BigDecimal diferencia;
+
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
-    private EstadoCaja estado = EstadoCaja.ABIERTA;
+    @Column(name = "estado", nullable = false, length = 20)
+    private EstadoCaja estado;
 }
