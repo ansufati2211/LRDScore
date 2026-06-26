@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.config.security;
 
 import com.rutadelsabor.core.config.tenant.TenantInterceptor;
+import com.rutadelsabor.core.interceptors.ModuloInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -10,17 +11,18 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class CorsConfig implements WebMvcConfigurer {
 
     private final TenantInterceptor tenantInterceptor;
+    private final ModuloInterceptor moduloInterceptor;
 
-    // 1. Inyección por Constructor (Resuelve java:S6813)
-    // Spring inyectará automáticamente el TenantInterceptor aquí
-    public CorsConfig(TenantInterceptor tenantInterceptor) {
+    public CorsConfig(TenantInterceptor tenantInterceptor, ModuloInterceptor moduloInterceptor) {
         this.tenantInterceptor = tenantInterceptor;
+        this.moduloInterceptor = moduloInterceptor;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Habilitamos el interceptor para todas las rutas de nuestra API
         registry.addInterceptor(tenantInterceptor).addPathPatterns("/api/**");
+        // R0-4: ModuloInterceptor evalúa @RequiereModulo después del JWT filter
+        registry.addInterceptor(moduloInterceptor).addPathPatterns("/api/**");
     }
 
     @Override

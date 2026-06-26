@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.services.impl;
 
 import com.rutadelsabor.core.config.SseEmitterManager;
+import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.dto.request.PagoItemDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
@@ -92,8 +93,8 @@ public class PedidoServiceImpl implements IPedidoService {
             throw new ReglaNegocioException("Solo un pedido en BORRADOR puede ser confirmado hacia la cocina.");
         }
         pedido.setEstadoActual(EstadoPedido.RECIBIDO);
-        // Notificar a la cocina en tiempo real que hay un nuevo pedido
-        sseEmitterManager.publicar("NUEVO_PEDIDO", Map.of(
+        Long empresaId = TenantContext.getCurrentTenant();
+        sseEmitterManager.publicarTenant(empresaId, "NUEVO_PEDIDO", Map.of(
                 "pedidoId", id,
                 "mesa", pedido.getIdentificadorMesaReferencia() != null
                         ? pedido.getIdentificadorMesaReferencia() : "",

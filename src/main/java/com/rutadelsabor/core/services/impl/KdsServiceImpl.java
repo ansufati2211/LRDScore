@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.services.impl;
 
 import com.rutadelsabor.core.config.SseEmitterManager;
+import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.Pedido;
@@ -40,8 +41,8 @@ public class KdsServiceImpl implements IKdsService {
     @Transactional
     public void marcarPreparando(Long pedidoId, Long usuarioId) {
         pedidoRepository.iniciarPreparacionYDescontarStock(pedidoId, usuarioId);
-        // Notificar a la cocina y sala que el plato está en preparación
-        sseEmitterManager.publicar("EN_PREPARACION", Map.of(
+        Long empresaId = TenantContext.getCurrentTenant();
+        sseEmitterManager.publicarTenant(empresaId, "EN_PREPARACION", Map.of(
                 "pedidoId", pedidoId,
                 "estado", "EN_PREPARACION"
         ));
@@ -60,12 +61,23 @@ public class KdsServiceImpl implements IKdsService {
         pedido.setEstadoActual(EstadoPedido.LISTO);
         pedidoRepository.save(pedido);
 
-        // Notificar al mozo que su pedido está listo para retirar
-        sseEmitterManager.publicar("PEDIDO_LISTO", Map.of(
+        Long empresaId = TenantContext.getCurrentTenant();
+        // Lazy load seguro: estamos dentro del @Transactional, sesión JPA abierta
+        Long mozoId = pedido.getMozo().getId();
+        String mesa = pedido.getIdentificadorMesaReferencia() != null
+                ? pedido.getIdentificadorMesaReferencia() : "";
+        Map<String, Object> payload = Map.of(
                 "pedidoId", pedidoId,
-                "mesa", pedido.getIdentificadorMesaReferencia() != null
-                        ? pedido.getIdentificadorMesaReferencia() : "",
+                "numeroOrden", pedido.getNumeroOrden() != null ? pedido.getNumeroOrden() : pedidoId,
+                "mesa", mesa,
+                "tipoConsumo", pedido.getTipoConsumo() != null ? pedido.getTipoConsumo() : "",
                 "estado", "LISTO"
-        ));
+        );
+
+        // t=0: notificar directamente al mozo creador de la comanda (R2 plano horizontal nivel 0)
+        sseEmitterManager.publicarUsuario(empresaId, mozoId, "PEDIDO_LISTO", payload);
+        // t=0: notificar a la pantalla de cocina para que actualice su vista
+        sseEmitterManager.publicarPorRol(empresaId, "ROLE_COCINA", "PEDIDO_LISTO", payload);
+        // La escalación de t=1min, t=2min, t=5min la gestiona EscalacionScheduler server-side (R2-7)
     }
 }

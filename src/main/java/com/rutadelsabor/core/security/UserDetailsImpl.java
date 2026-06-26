@@ -50,6 +50,10 @@ public class UserDetailsImpl implements UserDetails {
         return this.usuarioId;
     }
 
+    public String getRol() {
+        return this.rol;
+    }
+
     @Override
     public boolean isAccountNonExpired() { return true; }
     

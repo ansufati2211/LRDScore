@@ -22,6 +22,11 @@ public class JwtProvider {
     @Value("${jwt.expiration}")
     private int jwtExpirationMs;
 
+    // R1-3: token de larga duración (30 días por defecto) para la cuenta kiosco de cocina.
+    // Usar long porque 30 días en ms (2 592 000 000) supera Integer.MAX_VALUE (2 147 483 647).
+    @Value("${jwt.expiration-cocina}")
+    private long jwtExpirationCocinaMs;
+
     // Genera la llave segura a partir de la propiedad Base64
     private SecretKey getSigningKey() {
         byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
@@ -31,14 +36,17 @@ public class JwtProvider {
     // Generador de Token (usado en el AuthController)
     public String generateToken(Authentication authentication, Long empresaId, Long usuarioId) {
         UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
+        String rol = userPrincipal.getAuthorities().iterator().next().getAuthority();
+        // R1-3: la cuenta kiosco de cocina recibe token de larga duración para no interrumpir el servicio.
+        long expMs = "ROLE_COCINA".equals(rol) ? jwtExpirationCocinaMs : jwtExpirationMs;
 
         return Jwts.builder()
                 .subject(userPrincipal.getUsername())
-                .claim("rol", userPrincipal.getAuthorities().iterator().next().getAuthority())
+                .claim("rol", rol)
                 .claim("empresaId", empresaId)
                 .claim("usuarioId", usuarioId)
                 .issuedAt(new Date())
-                .expiration(new Date((new Date()).getTime() + jwtExpirationMs))
+                .expiration(new Date(System.currentTimeMillis() + expMs))
                 .signWith(getSigningKey())
                 .compact();
     }

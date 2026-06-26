@@ -3,6 +3,8 @@ export interface AuthResponse {
   correo: string;
   rol: string;
   empresaId: number;
+  modulosHabilitados: string[];  // R0-3: frontend oculta/deshabilita UI según plan
+  estadoSuscripcion: string;     // R0-3/E0-1: 'ACTIVA' | 'VENCIDA' | 'SIN_SUSCRIPCION'
 }
 
 export interface LoginRequest {

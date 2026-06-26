@@ -34,8 +34,10 @@ export default function KdsPage() {
   }, [cargarPedidos]);
 
   // SSE: escucha nuevos pedidos en tiempo real
+  // R2-2: token requerido vía ?token= porque EventSource no puede enviar headers Authorization
   useEffect(() => {
-    const es = new EventSource('/api/kds/eventos');
+    const token = localStorage.getItem('token');
+    const es = new EventSource(`/api/kds/eventos?token=${token}`);
 
     es.onopen = () => setConectado(true);
     es.onerror = () => {
@@ -44,6 +46,9 @@ export default function KdsPage() {
     };
 
     es.addEventListener('NUEVO_PEDIDO', () => {
+      cargarPedidos();
+    });
+    es.addEventListener('PEDIDO_LISTO', () => {
       cargarPedidos();
     });
 

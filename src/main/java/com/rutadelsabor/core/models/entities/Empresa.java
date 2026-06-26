@@ -1,9 +1,12 @@
 package com.rutadelsabor.core.models.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Getter
 @Setter
@@ -27,7 +30,12 @@ public class Empresa {
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
 
-    // Eliminamos @Temporal y cambiamos a LocalDateTime (Resuelve java:S1874)
+    // Referencia a la suscripción vigente del tenant (FK opcional en empresas.suscripcion_vigente_id)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "suscripcion_vigente_id")
+    @JsonIgnoreProperties("empresa")
+    private Suscripcion suscripcionVigente;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -36,13 +44,13 @@ public class Empresa {
 
     @PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

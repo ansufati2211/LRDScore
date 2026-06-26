@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShoppingCart, Plus, Minus, Send, LogOut, Clock, CheckCircle, ChefHat, Truck, X } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Send, LogOut, Clock, CheckCircle, ChefHat, Truck, X, Bell } from 'lucide-react';
 import {
   getProductos,
   getPedidosActivos,
@@ -21,23 +21,94 @@ const ESTADO_CONFIG: Record<EstadoPedido, { label: string; color: string; icon: 
   CANCELADO: { label: 'Cancelado', color: 'bg-red-100 text-red-500', icon: <X size={14} /> },
 };
 
+interface NotificacionListo {
+  pedidoId: number;
+  numeroOrden: number;
+  mesa: string;
+  tipoConsumo: string;
+  timestamp: Date;
+  entregado: boolean;
+}
+
+// ─── Modal de notificaciones LISTO ─────────────────────────────────────────────
+function NotificacionModal({
+  notificaciones,
+  onEntregar,
+  onClose,
+}: {
+  notificaciones: NotificacionListo[];
+  onEntregar: (id: number) => Promise<void>;
+  onClose: () => void;
+}) {
+  const pendientes = notificaciones.filter((n) => !n.entregado);
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+        <div className="bg-green-500 px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bell size={18} className="text-white" />
+            <h2 className="text-white font-bold">
+              {pendientes.length > 0
+                ? `${pendientes.length} pedido${pendientes.length > 1 ? 's' : ''} listo${pendientes.length > 1 ? 's' : ''} para entregar`
+                : 'Historial de notificaciones'}
+            </h2>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+          {notificaciones.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-8">Sin notificaciones</p>
+          )}
+          {notificaciones.map((n) => (
+            <div key={n.pedidoId} className={`px-5 py-3 flex items-center justify-between ${n.entregado ? 'opacity-50' : ''}`}>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  Orden #{n.numeroOrden} · {n.mesa || n.tipoConsumo}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {n.timestamp.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                  {n.entregado && <span className="ml-2 text-green-600">· Entregado</span>}
+                </p>
+              </div>
+              {!n.entregado && (
+                <button
+                  onClick={() => onEntregar(n.pedidoId)}
+                  className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                >
+                  Entregar ✓
+                </button>
+              )}
+              {n.entregado && <CheckCircle size={18} className="text-green-500" />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MozoPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
 
-  // Inventario
   const [productos, setProductos] = useState<Producto[]>([]);
   const [busqueda, setBusqueda] = useState('');
 
-  // Carrito local (nuevo pedido)
   const [carrito, setCarrito] = useState<ItemPedidoLocal[]>([]);
   const [mesa, setMesa] = useState('');
   const [tipoConsumo, setTipoConsumo] = useState<'MESA' | 'PARA_LLEVAR' | 'DELIVERY'>('MESA');
   const [notasGenerales, setNotasGenerales] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  // Pedidos activos
   const [pedidos, setPedidos] = useState<PedidoActivo[]>([]);
+
+  // R2-5/R2-6: notificaciones de pedidos LISTO
+  const [notificaciones, setNotificaciones] = useState<NotificacionListo[]>([]);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [alertando, setAlertando] = useState(false);
+  const alertTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cargarPedidos = useCallback(async () => {
     const data = await getPedidosActivos();
@@ -49,22 +120,56 @@ export default function MozoPage() {
     cargarPedidos();
   }, [cargarPedidos]);
 
-  // SSE: escucha eventos de cocina en tiempo real
+  // SSE: escucha eventos de cocina y escalación server-side
   useEffect(() => {
     const token = localStorage.getItem('token');
-    const url = `/api/kds/eventos`;
-    const es = new EventSource(`${url}?token=${token}`);
+    const es = new EventSource(`/api/kds/eventos?token=${token}`);
 
-    es.addEventListener('PEDIDO_LISTO', () => {
+    const agregarNotificacion = (data: { pedidoId: number; numeroOrden: number; mesa: string; tipoConsumo: string }) => {
+      setNotificaciones((prev) => {
+        if (prev.some((n) => n.pedidoId === data.pedidoId)) return prev;
+        return [
+          { ...data, timestamp: new Date(), entregado: false },
+          ...prev,
+        ];
+      });
+      setModalAbierto(true);
       cargarPedidos();
+    };
+
+    // t=0 notificación directa al mozo creador
+    es.addEventListener('PEDIDO_LISTO', (e) => {
+      const data = JSON.parse(e.data);
+      agregarNotificacion(data);
     });
-    es.addEventListener('EN_PREPARACION', () => {
-      cargarPedidos();
+
+    // t=1min escalación a todos los mozos (R2 plano horizontal nivel 1)
+    es.addEventListener('AVISO_PEDIDO_LISTO', (e) => {
+      const data = JSON.parse(e.data);
+      agregarNotificacion(data);
     });
+
+    es.addEventListener('EN_PREPARACION', () => cargarPedidos());
     es.onerror = () => es.close();
 
     return () => es.close();
   }, [cargarPedidos]);
+
+  // R2-6: re-alerta cada 10 s mientras haya pedidos LISTO sin entregar
+  useEffect(() => {
+    const pendientes = notificaciones.filter((n) => !n.entregado);
+    if (alertTimerRef.current) clearInterval(alertTimerRef.current);
+    if (pendientes.length === 0) return;
+
+    alertTimerRef.current = setInterval(() => {
+      setAlertando(true);
+      setTimeout(() => setAlertando(false), 800);
+    }, 10_000);
+
+    return () => {
+      if (alertTimerRef.current) clearInterval(alertTimerRef.current);
+    };
+  }, [notificaciones]);
 
   const productosFiltrados = productos.filter((p) =>
     p.nombre.toLowerCase().includes(busqueda.toLowerCase())
@@ -118,6 +223,10 @@ export default function MozoPage() {
 
   const handleEntregar = async (id: number) => {
     await entregarPedido(id);
+    // R2-6: marcar notificación como entregada — el modal deja de alertar pero conserva el historial
+    setNotificaciones((prev) =>
+      prev.map((n) => n.pedidoId === id ? { ...n, entregado: true } : n)
+    );
     await cargarPedidos();
   };
 
@@ -125,6 +234,8 @@ export default function MozoPage() {
     logout();
     navigate('/login');
   };
+
+  const pendientesCount = notificaciones.filter((n) => !n.entregado).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -137,19 +248,36 @@ export default function MozoPage() {
             <p className="text-xs text-gray-500">Hola, {user?.correo} · Mozo</p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm transition"
-        >
-          <LogOut size={16} />
-          Salir
-        </button>
+        <div className="flex items-center gap-3">
+          {/* R2-6: botón de notificaciones con badge, vibra al alertar */}
+          {notificaciones.length > 0 && (
+            <button
+              onClick={() => setModalAbierto(true)}
+              className={`relative p-2 rounded-full transition ${
+                alertando ? 'animate-bounce bg-green-100' : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              <Bell size={18} className={pendientesCount > 0 ? 'text-green-600' : 'text-gray-400'} />
+              {pendientesCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
+                  {pendientesCount}
+                </span>
+              )}
+            </button>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm transition"
+          >
+            <LogOut size={16} />
+            Salir
+          </button>
+        </div>
       </header>
 
       <div className="flex h-[calc(100vh-69px)]">
         {/* Panel izquierdo: Carta + Carrito */}
         <div className="w-[420px] bg-white border-r border-gray-200 flex flex-col">
-          {/* Tipo de consumo y mesa */}
           <div className="p-4 border-b border-gray-100 space-y-3">
             <div className="flex gap-2">
               {(['MESA', 'PARA_LLEVAR', 'DELIVERY'] as const).map((t) => (
@@ -176,7 +304,6 @@ export default function MozoPage() {
             )}
           </div>
 
-          {/* Buscador de productos */}
           <div className="p-3 border-b border-gray-100">
             <input
               value={busqueda}
@@ -186,7 +313,6 @@ export default function MozoPage() {
             />
           </div>
 
-          {/* Lista de productos */}
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
             {productosFiltrados.map((prod) => {
               const enCarrito = carrito.find((i) => i.productoId === prod.id);
@@ -212,7 +338,6 @@ export default function MozoPage() {
             })}
           </div>
 
-          {/* Carrito */}
           {carrito.length > 0 && (
             <div className="border-t border-gray-200 bg-gray-50 p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -294,7 +419,6 @@ export default function MozoPage() {
                     key={pedido.id}
                     className={`bg-white rounded-2xl border ${esListo ? 'border-green-400 shadow-md shadow-green-100' : 'border-gray-200'} p-4`}
                   >
-                    {/* Cabecera */}
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <span className="text-lg font-bold text-gray-900">#{pedido.id}</span>
@@ -306,7 +430,6 @@ export default function MozoPage() {
                       </span>
                     </div>
 
-                    {/* Items */}
                     <div className="space-y-1 mb-3">
                       {pedido.items.map((item, i) => (
                         <div key={i} className="flex justify-between text-sm">
@@ -344,6 +467,17 @@ export default function MozoPage() {
           )}
         </div>
       </div>
+
+      {/* R2-6: Modal de notificaciones LISTO */}
+      {modalAbierto && (
+        <NotificacionModal
+          notificaciones={notificaciones}
+          onEntregar={async (id) => {
+            await handleEntregar(id);
+          }}
+          onClose={() => setModalAbierto(false)}
+        />
+      )}
     </div>
   );
 }

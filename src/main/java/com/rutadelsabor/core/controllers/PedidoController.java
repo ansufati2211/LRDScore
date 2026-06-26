@@ -34,6 +34,7 @@ public class PedidoController {
         this.ticketManager = ticketManager;
     }
 
+    // R1-1 (CRÍTICA): ROLE_COCINA excluido explícitamente — única línea de defensa dura en modo kiosco.
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
     public ResponseEntity<Pedido> crearPedido(@RequestBody PedidoRequestDTO dto, Authentication auth) {
@@ -42,6 +43,7 @@ public class PedidoController {
         return ResponseEntity.ok(pedidoService.crearPedido(dto, mozo));
     }
 
+    // R1-1: ROLE_COCINA excluido — solo puede cambiar estados en /api/kds/*, no confirmar pedidos.
     @PutMapping("/{id}/confirmar")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
     public ResponseEntity<String> confirmarPedido(@PathVariable Long id) {
@@ -49,6 +51,7 @@ public class PedidoController {
         return ResponseEntity.ok("Pedido confirmado y enviado a cocina.");
     }
 
+    // R1-1: ROLE_COCINA excluido — la entrega la marca el mozo, no la cocina.
     @PutMapping("/{id}/entregar")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
     public ResponseEntity<String> entregarPedido(@PathVariable Long id) {
@@ -99,6 +102,14 @@ public class PedidoController {
     public ResponseEntity<String> cancelarPedido(@PathVariable Long id) {
         pedidoService.cancelarPedido(id);
         return ResponseEntity.ok("Pedido anulado exitosamente.");
+    }
+
+    // R2-5: ACK informacional — el cliente del mozo confirma que recibió el aviso PEDIDO_LISTO.
+    // No detiene la cascada de escalación server-side, que corre por tiempo independientemente.
+    @PostMapping("/{id}/notificacion/ack")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_CAJERO')")
+    public ResponseEntity<Void> ackNotificacion(@PathVariable Long id) {
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/ticket")

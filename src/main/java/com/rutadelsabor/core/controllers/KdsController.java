@@ -15,7 +15,10 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/kds")
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA') or hasAuthority('ROLE_MOZO')")
+// R2 (Módulo 2): CAJERO añadido al nivel de clase para que pueda suscribirse al canal SSE
+// y recibir la escalada del nivel 2 (t=2min). Los endpoints /pendientes, /preparando y /listo
+// tienen @PreAuthorize de método que siguen excluyendo a CAJERO y MOZO.
+@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_CAJERO')")
 public class KdsController {
 
     private final IKdsService kdsService;
@@ -48,14 +51,19 @@ public class KdsController {
     }
 
     /**
-     * Endpoint SSE: el cliente (cocina/sala) se suscribe y recibe eventos push.
-     * Eventos emitidos:
-     *   - NUEVO_PEDIDO    → cuando un mozo confirma un pedido (BORRADOR → RECIBIDO)
-     *   - EN_PREPARACION  → cuando cocina inicia la preparación
-     *   - PEDIDO_LISTO    → cuando cocina marca el plato como listo
+     * R2-2: Endpoint SSE. El empresaId del JWT validado determina el bucket de tenant
+     * bajo el cual se registra el emitter — nunca de un parámetro de request.
+     * Acepta ?token= como fallback para EventSource (que no puede enviar headers).
+     *
+     * Eventos emitidos al tenant:
+     *   NUEVO_PEDIDO      → mozo confirma pedido (BORRADOR → RECIBIDO)
+     *   EN_PREPARACION    → cocina inicia preparación
+     *   PEDIDO_LISTO      → cocina marca plato listo (t=0 → al mozo creador)
+     *   AVISO_PEDIDO_LISTO → escalación server-side (t=1min mozos, t=2min cajeros, t=5min gerentes)
      */
     @GetMapping(value = "/eventos", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter suscribirEventos() {
-        return sseEmitterManager.suscribir();
+    public SseEmitter suscribirEventos(Authentication auth) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        return sseEmitterManager.suscribir(user.getEmpresaId(), user.getUsuarioId(), user.getRol());
     }
 }

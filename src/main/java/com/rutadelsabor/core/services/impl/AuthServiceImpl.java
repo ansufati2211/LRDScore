@@ -5,42 +5,53 @@ import com.rutadelsabor.core.dto.response.AuthResponseDTO;
 import com.rutadelsabor.core.security.JwtProvider;
 import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IAuthService;
+import com.rutadelsabor.core.services.interfaces.ISuscripcionService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class AuthServiceImpl implements IAuthService {
 
     private final AuthenticationManager authenticationManager;
     private final JwtProvider jwtProvider;
+    private final ISuscripcionService suscripcionService;
 
-    public AuthServiceImpl(AuthenticationManager authenticationManager, JwtProvider jwtProvider) {
+    public AuthServiceImpl(AuthenticationManager authenticationManager,
+                           JwtProvider jwtProvider,
+                           ISuscripcionService suscripcionService) {
         this.authenticationManager = authenticationManager;
         this.jwtProvider = jwtProvider;
+        this.suscripcionService = suscripcionService;
     }
 
+    // R0-1 se cumple en conjunto con ModuloInterceptor y @PreAuthorize.
+    // R0-3: el response incluye modulosHabilitados y estadoSuscripcion.
     @Override
     public AuthResponseDTO autenticarUsuario(LoginRequestDTO loginRequest) {
-        // 1. Validar credenciales contra la base de datos (BCrypt)
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getCorreo(), loginRequest.getPassword()));
 
-        // 2. Establecer el contexto de seguridad
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        // 3. Extraer el Principal ANTES de generar el token para obtener empresaId y usuarioId
         if (!(authentication.getPrincipal() instanceof UserDetailsImpl userDetails)) {
             throw new IllegalArgumentException("El proceso de autenticación no generó un principal válido");
         }
 
-        // 4. Generar el Token JWT usando la firma actualizada del JwtProvider
         String jwt = jwtProvider.generateToken(authentication, userDetails.getEmpresaId(), userDetails.getUsuarioId());
-
         String rol = userDetails.getAuthorities().iterator().next().getAuthority();
 
-        return new AuthResponseDTO(jwt, userDetails.getUsername(), rol, userDetails.getEmpresaId());
+        // R0-3: módulos del plan vigente; E0-1: si VENCIDA devuelve solo módulos core.
+        List<String> modulosHabilitados = suscripcionService.obtenerModulosHabilitados(userDetails.getEmpresaId());
+        String estadoSuscripcion = suscripcionService.obtenerSuscripcionVigente(userDetails.getEmpresaId())
+                .map(s -> s.getEstado().name())
+                .orElse("SIN_SUSCRIPCION");
+
+        return new AuthResponseDTO(jwt, userDetails.getUsername(), rol, userDetails.getEmpresaId(),
+                modulosHabilitados, estadoSuscripcion);
     }
 }

@@ -1,11 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DollarSign, Lock, Unlock, Receipt, X, LogOut, CheckCircle, Printer } from 'lucide-react';
+import { DollarSign, Lock, Unlock, Receipt, X, LogOut, CheckCircle, Printer, Bell } from 'lucide-react';
 import { abrirCaja, cerrarCaja, getCajaActiva, procesarPago } from '@/api/caja';
 import { getPedidosActivos } from '@/api/pedidos';
 import { useAuthStore } from '@/store/authStore';
 import type { SesionCaja, PagoItem } from '@/api/caja';
 import type { PedidoActivo } from '@/types';
+
+interface AvisoPedidoListo {
+  pedidoId: number;
+  numeroOrden: number;
+  mesa: string;
+  tipoConsumo: string;
+  timestamp: Date;
+}
 
 const METODOS = ['EFECTIVO', 'YAPE', 'PLIN', 'TARJETA'] as const;
 type Metodo = typeof METODOS[number];
@@ -211,6 +219,8 @@ export default function CajeroPage() {
   const [cargando, setCargando] = useState(true);
   const [operando, setOperando] = useState(false);
   const [error, setError] = useState('');
+  // R2-8: avisos de pedidos LISTO que el mozo no ha retirado (escalación t=2min)
+  const [avisos, setAvisos] = useState<AvisoPedidoListo[]>([]);
 
   const cargarEstado = useCallback(async () => {
     setCargando(true);
@@ -237,6 +247,23 @@ export default function CajeroPage() {
   useEffect(() => {
     cargarEstado();
   }, [cargarEstado]);
+
+  // R2-8: SSE — recibe escalación nivel 2 (t=2min) cuando un pedido LISTO no fue retirado
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const es = new EventSource(`/api/kds/eventos?token=${token}`);
+
+    es.addEventListener('AVISO_PEDIDO_LISTO', (e) => {
+      const data = JSON.parse(e.data) as AvisoPedidoListo;
+      setAvisos((prev) => {
+        if (prev.some((a) => a.pedidoId === data.pedidoId)) return prev;
+        return [{ ...data, timestamp: new Date() }, ...prev];
+      });
+    });
+
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, []);
 
   const handleAbrirCaja = async () => {
     const monto = parseFloat(montoApertura);
@@ -304,6 +331,43 @@ export default function CajeroPage() {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
+            </div>
+          )}
+
+          {/* R2-8: avisos de pedidos LISTO sin retirar (escalación t=2min) */}
+          {avisos.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Bell size={16} className="text-amber-600" />
+                <span className="text-sm font-bold text-amber-800">
+                  Pedidos listos sin retirar ({avisos.length})
+                </span>
+              </div>
+              <div className="space-y-2">
+                {avisos.map((aviso) => (
+                  <div key={aviso.pedidoId} className="flex items-center justify-between bg-white rounded-xl px-4 py-2 border border-amber-100">
+                    <div>
+                      <span className="text-sm font-semibold text-gray-900">
+                        Orden #{aviso.numeroOrden}
+                      </span>
+                      <span className="text-sm text-gray-500 ml-2">
+                        · {aviso.mesa || aviso.tipoConsumo}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-amber-600">
+                        {aviso.timestamp.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <button
+                        onClick={() => setAvisos((prev) => prev.filter((a) => a.pedidoId !== aviso.pedidoId))}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
