@@ -32,7 +32,15 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                                     @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
 
-        final String authorizationHeader = request.getHeader("Authorization");
+        String authorizationHeader = request.getHeader("Authorization");
+
+        // Fallback: SSE clients (EventSource) can't send headers — accept token via query param
+        if (authorizationHeader == null) {
+            String tokenParam = request.getParameter("token");
+            if (tokenParam != null && !tokenParam.isBlank()) {
+                authorizationHeader = "Bearer " + tokenParam;
+            }
+        }
 
         try {
             if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {

@@ -2,8 +2,15 @@ import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 
 interface Props {
-  children: React.ReactNode;
-  roles?: string[];
+  readonly children: React.ReactNode;
+  readonly roles?: string[];
+}
+
+function roleHome(rol: string): string {
+  if (rol === 'ROLE_COCINA') return '/kds';
+  if (rol === 'ROLE_SUPER_ADMIN' || rol === 'ROLE_GERENTE') return '/dashboard';
+  if (rol === 'ROLE_CAJERO') return '/cajero';
+  return '/mozo';
 }
 
 export default function PrivateRoute({ children, roles }: Props) {
@@ -12,9 +19,7 @@ export default function PrivateRoute({ children, roles }: Props) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
 
   if (roles && user && !roles.includes(user.rol)) {
-    // Redirige al área correcta según su rol
-    if (user.rol === 'ROLE_COCINA') return <Navigate to="/kds" replace />;
-    return <Navigate to="/mozo" replace />;
+    return <Navigate to={roleHome(user.rol)} replace />;
   }
 
   return <>{children}</>;
