@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.query.Procedure;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface PedidoRepository extends JpaRepository<Pedido, Long> {
@@ -31,4 +32,7 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     );
 
     List<Pedido> findByEstadoActualInOrderByCreatedAtDesc(List<EstadoPedido> estados);
+
+    List<Pedido> findByEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+            List<EstadoPedido> estados, LocalDateTime inicio, LocalDateTime fin);
 }

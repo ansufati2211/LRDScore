@@ -2,7 +2,9 @@ package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
 import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
+import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
 import com.rutadelsabor.core.dto.request.MermaRequestDTO;
+import com.rutadelsabor.core.dto.request.ProductoRequestDTO;
 import com.rutadelsabor.core.dto.request.RecetaRequestDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.models.entities.*;
@@ -56,6 +58,19 @@ public class InventarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearProducto(producto));
     }
 
+    @PutMapping("/productos/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<Producto> actualizarProducto(@PathVariable Long id, @RequestBody ProductoRequestDTO dto) {
+        return ResponseEntity.ok(inventarioService.actualizarProducto(id, dto));
+    }
+
+    @DeleteMapping("/productos/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> desactivarProducto(@PathVariable Long id) {
+        inventarioService.desactivarProducto(id);
+        return ResponseEntity.ok("Producto desactivado exitosamente.");
+    }
+
     // ─── INSUMOS ──────────────────────────────────────────────────────────────
 
     @GetMapping("/insumos")
@@ -68,6 +83,19 @@ public class InventarioController {
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<Insumo> crearInsumo(@RequestBody Insumo insumo) {
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearInsumo(insumo));
+    }
+
+    @PutMapping("/insumos/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<Insumo> actualizarInsumo(@PathVariable Long id, @RequestBody InsumoRequestDTO dto) {
+        return ResponseEntity.ok(inventarioService.actualizarInsumo(id, dto));
+    }
+
+    @DeleteMapping("/insumos/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> desactivarInsumo(@PathVariable Long id) {
+        inventarioService.desactivarInsumo(id);
+        return ResponseEntity.ok("Insumo desactivado exitosamente.");
     }
 
     @GetMapping("/alertas")

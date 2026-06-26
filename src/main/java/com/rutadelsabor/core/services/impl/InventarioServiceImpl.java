@@ -2,7 +2,9 @@ package com.rutadelsabor.core.services.impl;
 
 import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
 import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
+import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
 import com.rutadelsabor.core.dto.request.MermaRequestDTO;
+import com.rutadelsabor.core.dto.request.ProductoRequestDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.*;
@@ -51,6 +53,32 @@ public class InventarioServiceImpl implements IInventarioService {
     public Insumo crearInsumo(Insumo insumo) { return insumoRepository.save(insumo); }
 
     @Override
+    @Transactional
+    public Insumo actualizarInsumo(Long id, InsumoRequestDTO dto) {
+        Insumo insumo = insumoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado con ID: " + id));
+        if (dto.getNombre() != null && !dto.getNombre().isBlank()) {
+            insumo.setNombre(dto.getNombre());
+        }
+        if (dto.getUnidadMedida() != null && !dto.getUnidadMedida().isBlank()) {
+            insumo.setUnidadMedida(dto.getUnidadMedida());
+        }
+        if (dto.getStockMinimo() != null) {
+            insumo.setStockMinimo(dto.getStockMinimo());
+        }
+        return insumoRepository.save(insumo);
+    }
+
+    @Override
+    @Transactional
+    public void desactivarInsumo(Long id) {
+        Insumo insumo = insumoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado con ID: " + id));
+        insumo.setEstadoRegistro(false);
+        insumoRepository.save(insumo);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<Insumo> listarInsumos() { return insumoRepository.findAll(); }
 
@@ -61,6 +89,37 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public Producto crearProducto(Producto producto) { return productoRepository.save(producto); }
+
+    @Override
+    @Transactional
+    public Producto actualizarProducto(Long id, ProductoRequestDTO dto) {
+        Producto producto = productoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado con ID: " + id));
+        if (dto.getNombre() != null && !dto.getNombre().isBlank()) {
+            producto.setNombre(dto.getNombre());
+        }
+        if (dto.getPrecioVenta() != null) {
+            producto.setPrecioVenta(dto.getPrecioVenta());
+        }
+        if (dto.getTagsBusqueda() != null) {
+            producto.setTagsBusqueda(dto.getTagsBusqueda());
+        }
+        if (dto.getCategoriaId() != null) {
+            Categoria cat = categoriaRepository.findById(dto.getCategoriaId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada con ID: " + dto.getCategoriaId()));
+            producto.setCategoria(cat);
+        }
+        return productoRepository.save(producto);
+    }
+
+    @Override
+    @Transactional
+    public void desactivarProducto(Long id) {
+        Producto producto = productoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado con ID: " + id));
+        producto.setEstadoRegistro(false);
+        productoRepository.save(producto);
+    }
 
     @Override
     @Transactional(readOnly = true)

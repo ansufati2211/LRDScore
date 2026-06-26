@@ -10,12 +10,14 @@ import com.rutadelsabor.core.repositories.UsuarioRepository;
 import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IPedidoService;
 import com.rutadelsabor.core.services.reportes.TicketManager;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -65,10 +67,24 @@ public class PedidoController {
         return ResponseEntity.ok("Pago registrado exitosamente.");
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<Pedido> obtenerPedido(@PathVariable Long id) {
+        return ResponseEntity.ok(pedidoService.obtenerPedido(id));
+    }
+
     @GetMapping("/activos")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_COCINA')")
     public ResponseEntity<List<PedidoActivoResponseDTO>> listarPedidosActivos() {
         return ResponseEntity.ok(pedidoService.listarPedidosActivos());
+    }
+
+    @GetMapping("/historial")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    public ResponseEntity<List<PedidoActivoResponseDTO>> listarHistorial(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
+        return ResponseEntity.ok(pedidoService.listarHistorial(inicio, fin));
     }
 
     @PutMapping("/{id}/descuento")

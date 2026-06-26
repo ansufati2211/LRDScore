@@ -7,6 +7,7 @@ import com.rutadelsabor.core.models.entities.Pedido;
 import com.rutadelsabor.core.models.entities.Usuario;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 public interface IPedidoService {
@@ -18,4 +19,5 @@ public interface IPedidoService {
     void procesarPago(Long pedidoId, PagoRequestDTO pagoDTO, Long cajeroId);
     void cancelarPedido(Long id);
     List<PedidoActivoResponseDTO> listarPedidosActivos();
+    List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin);
 }

@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.services.impl;
 
+import com.rutadelsabor.core.config.SseEmitterManager;
 import com.rutadelsabor.core.dto.request.PagoItemDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
@@ -14,7 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,15 +29,18 @@ public class PedidoServiceImpl implements IPedidoService {
     private final PedidoDetalleRepository detalleRepository;
     private final ProductoRepository productoRepository;
     private final CajaRepository cajaRepository;
+    private final SseEmitterManager sseEmitterManager;
 
     public PedidoServiceImpl(PedidoRepository pedidoRepository,
                              PedidoDetalleRepository detalleRepository,
                              ProductoRepository productoRepository,
-                             CajaRepository cajaRepository) {
+                             CajaRepository cajaRepository,
+                             SseEmitterManager sseEmitterManager) {
         this.pedidoRepository = pedidoRepository;
         this.detalleRepository = detalleRepository;
         this.productoRepository = productoRepository;
         this.cajaRepository = cajaRepository;
+        this.sseEmitterManager = sseEmitterManager;
     }
 
     @Override
@@ -84,6 +92,13 @@ public class PedidoServiceImpl implements IPedidoService {
             throw new ReglaNegocioException("Solo un pedido en BORRADOR puede ser confirmado hacia la cocina.");
         }
         pedido.setEstadoActual(EstadoPedido.RECIBIDO);
+        // Notificar a la cocina en tiempo real que hay un nuevo pedido
+        sseEmitterManager.publicar("NUEVO_PEDIDO", Map.of(
+                "pedidoId", id,
+                "mesa", pedido.getIdentificadorMesaReferencia() != null
+                        ? pedido.getIdentificadorMesaReferencia() : "",
+                "estado", "RECIBIDO"
+        ));
     }
 
     @Override
@@ -184,6 +199,19 @@ public class PedidoServiceImpl implements IPedidoService {
         }
         pedido.setDescuento(descuento);
         pedido.setTotal(pedido.getSubtotal().subtract(descuento));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin) {
+        List<EstadoPedido> estadosHistoricos = Arrays.asList(EstadoPedido.PAGADO, EstadoPedido.CANCELADO);
+        LocalDateTime inicioDateTime = inicio.atStartOfDay();
+        LocalDateTime finDateTime = fin.atTime(23, 59, 59);
+        return pedidoRepository.findByEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+                estadosHistoricos, inicioDateTime, finDateTime)
+                .stream()
+                .map(this::mapToActivoResponseDTO)
+                .collect(Collectors.toList());
     }
 
     private PedidoActivoResponseDTO mapToActivoResponseDTO(Pedido p) {

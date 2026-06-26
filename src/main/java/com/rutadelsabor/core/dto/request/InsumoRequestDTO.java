@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 @Setter
 public class InsumoRequestDTO {
     private String nombre;
-    private String unidadMedida; // Ej: kg, gr, ml, und
+    private String unidadMedida;
     private BigDecimal stockActual;
+    private BigDecimal stockMinimo;
 }

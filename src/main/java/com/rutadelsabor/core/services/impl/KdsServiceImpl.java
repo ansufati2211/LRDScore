@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.services.impl;
 
+import com.rutadelsabor.core.config.SseEmitterManager;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.Pedido;
@@ -12,31 +13,38 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class KdsServiceImpl implements IKdsService {
 
     private final VwKdsCocinaRepository kdsRepository;
     private final PedidoRepository pedidoRepository;
+    private final SseEmitterManager sseEmitterManager;
 
-    public KdsServiceImpl(VwKdsCocinaRepository kdsRepository, PedidoRepository pedidoRepository) {
+    public KdsServiceImpl(VwKdsCocinaRepository kdsRepository,
+                          PedidoRepository pedidoRepository,
+                          SseEmitterManager sseEmitterManager) {
         this.kdsRepository = kdsRepository;
         this.pedidoRepository = pedidoRepository;
+        this.sseEmitterManager = sseEmitterManager;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<VwKdsCocina> obtenerPedidosPendientes() {
-        // La vista vw_kds_cocina ya filtra por estado RECIBIDO y EN_PREPARACION
         return kdsRepository.findAll();
     }
 
     @Override
     @Transactional
     public void marcarPreparando(Long pedidoId, Long usuarioId) {
-        // SP valida estado RECIBIDO, descuenta stock por receta y escribe Kardex atómicamente.
-        // Si stock insuficiente, lanza excepción y hace rollback.
         pedidoRepository.iniciarPreparacionYDescontarStock(pedidoId, usuarioId);
+        // Notificar a la cocina y sala que el plato está en preparación
+        sseEmitterManager.publicar("EN_PREPARACION", Map.of(
+                "pedidoId", pedidoId,
+                "estado", "EN_PREPARACION"
+        ));
     }
 
     @Override
@@ -51,5 +59,13 @@ public class KdsServiceImpl implements IKdsService {
 
         pedido.setEstadoActual(EstadoPedido.LISTO);
         pedidoRepository.save(pedido);
+
+        // Notificar al mozo que su pedido está listo para retirar
+        sseEmitterManager.publicar("PEDIDO_LISTO", Map.of(
+                "pedidoId", pedidoId,
+                "mesa", pedido.getIdentificadorMesaReferencia() != null
+                        ? pedido.getIdentificadorMesaReferencia() : "",
+                "estado", "LISTO"
+        ));
     }
 }

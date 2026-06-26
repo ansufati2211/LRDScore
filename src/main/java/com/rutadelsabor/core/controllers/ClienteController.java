@@ -4,13 +4,14 @@ import com.rutadelsabor.core.dto.request.ClienteRequestDTO;
 import com.rutadelsabor.core.models.entities.Cliente;
 import com.rutadelsabor.core.repositories.ClienteRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@SuppressWarnings("unused")
 @RestController
 @RequestMapping("/api/clientes")
+@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
 public class ClienteController {
 
     private final ClienteRepository clienteRepository;
@@ -28,7 +29,6 @@ public class ClienteController {
         cliente.setDireccion(dto.getDireccion());
         cliente.setCorreo(dto.getCorreo());
         cliente.setTelefono(dto.getTelefono());
-        
         return ResponseEntity.ok(clienteRepository.save(cliente));
     }
 
@@ -37,5 +37,11 @@ public class ClienteController {
         return clienteRepository.findByNumeroDocumento(documento)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<List<Cliente>> listarClientes() {
+        return ResponseEntity.ok(clienteRepository.findAll());
     }
 }
