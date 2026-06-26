@@ -55,6 +55,10 @@ public class InventarioServiceImpl implements IInventarioService {
     public List<Insumo> listarInsumos() { return insumoRepository.findAll(); }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Insumo> listarInsumosConStockBajo() { return insumoRepository.findInsumosConStockBajo(); }
+
+    @Override
     @Transactional
     public Producto crearProducto(Producto producto) { return productoRepository.save(producto); }
 
@@ -83,6 +87,15 @@ public class InventarioServiceImpl implements IInventarioService {
     @Transactional(readOnly = true)
     public List<RecetaDetalle> obtenerRecetaPorProducto(Long productoId) {
         return recetaDetalleRepository.findByProductoId(productoId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<KardexMovimiento> listarKardexPorInsumo(Long insumoId) {
+        if (!insumoRepository.existsById(insumoId)) {
+            throw new RecursoNoEncontradoException("Insumo no encontrado con ID: " + insumoId);
+        }
+        return kardexRepository.findByInsumoIdOrderByCreatedAtDesc(insumoId);
     }
 
     // --- LÓGICA DE KARDEX ---

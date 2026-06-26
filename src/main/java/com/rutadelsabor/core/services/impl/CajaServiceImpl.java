@@ -5,7 +5,9 @@ import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.SesionCaja;
 import com.rutadelsabor.core.models.entities.Usuario;
 import com.rutadelsabor.core.models.enums.EstadoCaja;
+import com.rutadelsabor.core.models.enums.MetodoPago;
 import com.rutadelsabor.core.repositories.CajaRepository;
+import com.rutadelsabor.core.repositories.TransaccionPagoRepository;
 import com.rutadelsabor.core.repositories.UsuarioRepository;
 import com.rutadelsabor.core.services.interfaces.ICajaService;
 import org.springframework.stereotype.Service;
@@ -13,16 +15,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class CajaServiceImpl implements ICajaService {
 
     private final CajaRepository cajaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final TransaccionPagoRepository transaccionPagoRepository;
 
-    public CajaServiceImpl(CajaRepository cajaRepository, UsuarioRepository usuarioRepository) {
+    public CajaServiceImpl(CajaRepository cajaRepository,
+                           UsuarioRepository usuarioRepository,
+                           TransaccionPagoRepository transaccionPagoRepository) {
         this.cajaRepository = cajaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.transaccionPagoRepository = transaccionPagoRepository;
     }
 
     @Override
@@ -53,6 +60,11 @@ public class CajaServiceImpl implements ICajaService {
             throw new ReglaNegocioException("La sesión de caja ya se encuentra cerrada.");
         }
 
+        // montoFinalCalculado = efectivo inicial + suma de todos los pagos en EFECTIVO de la sesión
+        // (YAPE, TARJETA y PLIN no entran a la caja física)
+        BigDecimal totalEfectivo = transaccionPagoRepository.sumarPorSesionYMetodo(sesionCajaId, MetodoPago.EFECTIVO);
+        sesion.setMontoFinalCalculado(sesion.getMontoInicial().add(totalEfectivo));
+
         sesion.setEstado(EstadoCaja.CERRADA);
         sesion.setFechaCierre(LocalDateTime.now());
         sesion.setMontoFinalDeclarado(montoFinalDeclarado);
@@ -65,5 +77,11 @@ public class CajaServiceImpl implements ICajaService {
     public SesionCaja obtenerCajaActivaPorCajero(Long cajeroId) {
         return cajaRepository.findByCajeroIdAndEstado(cajeroId, EstadoCaja.ABIERTA)
                 .orElseThrow(() -> new RecursoNoEncontradoException("No hay ninguna sesión de caja abierta para este cajero."));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SesionCaja> listarHistorialPorCajero(Long cajeroId) {
+        return cajaRepository.findByCajeroIdOrderByFechaAperturaDesc(cajeroId);
     }
 }

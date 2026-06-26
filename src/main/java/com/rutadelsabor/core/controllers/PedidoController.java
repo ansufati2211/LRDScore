@@ -15,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -68,6 +69,13 @@ public class PedidoController {
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_COCINA')")
     public ResponseEntity<List<PedidoActivoResponseDTO>> listarPedidosActivos() {
         return ResponseEntity.ok(pedidoService.listarPedidosActivos());
+    }
+
+    @PutMapping("/{id}/descuento")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> aplicarDescuento(@PathVariable Long id, @RequestParam BigDecimal monto) {
+        pedidoService.aplicarDescuento(id, monto);
+        return ResponseEntity.ok("Descuento de S/ " + monto + " aplicado al pedido.");
     }
 
     @PutMapping("/{id}/cancelar")

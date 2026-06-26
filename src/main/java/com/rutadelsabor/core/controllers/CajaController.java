@@ -9,6 +9,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/caja")
 @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
@@ -35,5 +37,11 @@ public class CajaController {
     public ResponseEntity<SesionCaja> obtenerCajaActiva(Authentication auth) {
         UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
         return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(cajero.getUsuarioId()));
+    }
+
+    @GetMapping("/historial")
+    public ResponseEntity<List<SesionCaja>> listarHistorial(Authentication auth) {
+        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
+        return ResponseEntity.ok(cajaService.listarHistorialPorCajero(cajero.getUsuarioId()));
     }
 }

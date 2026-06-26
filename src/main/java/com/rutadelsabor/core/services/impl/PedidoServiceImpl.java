@@ -23,13 +23,16 @@ public class PedidoServiceImpl implements IPedidoService {
     private final PedidoRepository pedidoRepository;
     private final PedidoDetalleRepository detalleRepository;
     private final ProductoRepository productoRepository;
+    private final CajaRepository cajaRepository;
 
-    public PedidoServiceImpl(PedidoRepository pedidoRepository, 
-                             PedidoDetalleRepository detalleRepository, 
-                             ProductoRepository productoRepository) {
+    public PedidoServiceImpl(PedidoRepository pedidoRepository,
+                             PedidoDetalleRepository detalleRepository,
+                             ProductoRepository productoRepository,
+                             CajaRepository cajaRepository) {
         this.pedidoRepository = pedidoRepository;
         this.detalleRepository = detalleRepository;
         this.productoRepository = productoRepository;
+        this.cajaRepository = cajaRepository;
     }
 
     @Override
@@ -55,18 +58,19 @@ public class PedidoServiceImpl implements IPedidoService {
             detalle.setPedido(pedidoGuardado);
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
-            
+
             // SEGURIDAD FINANCIERA: El backend asume el control total de los precios
             BigDecimal subtotal = producto.getPrecioVenta().multiply(new BigDecimal(item.getCantidad()));
-            detalle.setPrecioUnitario(producto.getPrecioVenta()); 
+            detalle.setPrecioUnitario(producto.getPrecioVenta());
             detalle.setSubtotal(subtotal);
             detalle.setNotasPreparacion(item.getNotasPreparacion());
-            
+
             detalleRepository.save(detalle);
             totalCalculado = totalCalculado.add(subtotal);
         }
-        
-        // Asignamos el total auditable y guardamos
+
+        // El ID de la BD sirve como número de orden (único, sin race conditions)
+        pedidoGuardado.setNumeroOrden(Math.toIntExact(pedidoGuardado.getId()));
         pedidoGuardado.setSubtotal(totalCalculado);
         pedidoGuardado.setTotal(totalCalculado);
         return pedidoRepository.save(pedidoGuardado);
@@ -101,6 +105,9 @@ public class PedidoServiceImpl implements IPedidoService {
             throw new ReglaNegocioException("El pedido debe estar LISTO o ENTREGADO para procesar el pago.");
         }
 
+        SesionCaja sesionCaja = cajaRepository.findById(pagoDTO.getSesionCajaId())
+                .orElseThrow(() -> new RecursoNoEncontradoException("Sesión de caja no encontrada con ID: " + pagoDTO.getSesionCajaId()));
+
         BigDecimal sumaPagos = BigDecimal.ZERO;
 
         // PAGO MIXTO: Iteramos sobre los múltiples métodos con los que el cliente pudo haber pagado
@@ -108,8 +115,8 @@ public class PedidoServiceImpl implements IPedidoService {
             pedidoRepository.registrarPago(
                     pedidoId,
                     pagoDTO.getSesionCajaId(),
-                    item.getMetodoPago(), 
-                    item.getMonto(), 
+                    item.getMetodoPago(),
+                    item.getMonto(),
                     item.getNumeroYape(),
                     item.getUltimosDigitos(),
                     item.getTitular()
@@ -118,10 +125,12 @@ public class PedidoServiceImpl implements IPedidoService {
         }
 
         // Validación estricta de cuadre financiero
-        if(sumaPagos.compareTo(pedido.getTotal()) < 0) {
-             throw new ReglaNegocioException("El monto entregado es inferior al total del pedido. Faltan S/ " + pedido.getTotal().subtract(sumaPagos));
+        if (sumaPagos.compareTo(pedido.getTotal()) < 0) {
+            throw new ReglaNegocioException("El monto entregado es inferior al total del pedido. Faltan S/ " + pedido.getTotal().subtract(sumaPagos));
         }
 
+        // Vincular el pedido a la sesión de caja para trazabilidad en reportes
+        pedido.setSesionCaja(sesionCaja);
         pedido.setEstadoActual(EstadoPedido.PAGADO);
     }
 
@@ -161,6 +170,20 @@ public class PedidoServiceImpl implements IPedidoService {
                 .stream()
                 .map(this::mapToActivoResponseDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void aplicarDescuento(Long id, BigDecimal descuento) {
+        Pedido pedido = obtenerPedido(id);
+        if (pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
+            throw new ReglaNegocioException("El descuento solo puede aplicarse a pedidos en estado BORRADOR.");
+        }
+        if (descuento.compareTo(BigDecimal.ZERO) < 0 || descuento.compareTo(pedido.getSubtotal()) > 0) {
+            throw new ReglaNegocioException("El descuento debe ser mayor a 0 y no puede superar el subtotal del pedido.");
+        }
+        pedido.setDescuento(descuento);
+        pedido.setTotal(pedido.getSubtotal().subtract(descuento));
     }
 
     private PedidoActivoResponseDTO mapToActivoResponseDTO(Pedido p) {

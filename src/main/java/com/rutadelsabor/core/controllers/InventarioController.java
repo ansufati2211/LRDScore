@@ -3,14 +3,18 @@ package com.rutadelsabor.core.controllers;
 import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
 import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
 import com.rutadelsabor.core.dto.request.MermaRequestDTO;
+import com.rutadelsabor.core.dto.request.RecetaRequestDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
-import com.rutadelsabor.core.models.entities.Usuario;
+import com.rutadelsabor.core.models.entities.*;
 import com.rutadelsabor.core.repositories.UsuarioRepository;
 import com.rutadelsabor.core.services.interfaces.IInventarioService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/inventario")
@@ -24,27 +28,98 @@ public class InventarioController {
         this.usuarioRepository = usuarioRepository;
     }
 
+    // ─── CATEGORÍAS ──────────────────────────────────────────────────────────
+
+    @GetMapping("/categorias")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<List<Categoria>> listarCategorias() {
+        return ResponseEntity.ok(inventarioService.listarCategorias());
+    }
+
+    @PostMapping("/categorias")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<Categoria> crearCategoria(@RequestBody Categoria categoria) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearCategoria(categoria));
+    }
+
+    // ─── PRODUCTOS ────────────────────────────────────────────────────────────
+
+    @GetMapping("/productos")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<List<Producto>> listarProductos() {
+        return ResponseEntity.ok(inventarioService.listarProductos());
+    }
+
+    @PostMapping("/productos")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<Producto> crearProducto(@RequestBody Producto producto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearProducto(producto));
+    }
+
+    // ─── INSUMOS ──────────────────────────────────────────────────────────────
+
+    @GetMapping("/insumos")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<List<Insumo>> listarInsumos() {
+        return ResponseEntity.ok(inventarioService.listarInsumos());
+    }
+
+    @PostMapping("/insumos")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<Insumo> crearInsumo(@RequestBody Insumo insumo) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearInsumo(insumo));
+    }
+
+    @GetMapping("/alertas")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<List<Insumo>> alertasStockBajo() {
+        return ResponseEntity.ok(inventarioService.listarInsumosConStockBajo());
+    }
+
+    // ─── RECETAS ──────────────────────────────────────────────────────────────
+
+    @GetMapping("/recetas/{productoId}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
+    public ResponseEntity<List<RecetaDetalle>> obtenerReceta(@PathVariable Long productoId) {
+        return ResponseEntity.ok(inventarioService.obtenerRecetaPorProducto(productoId));
+    }
+
+    @PostMapping("/recetas")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<RecetaDetalle> agregarInsumoAReceta(@RequestBody RecetaRequestDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                inventarioService.agregarInsumoAReceta(dto.getProductoId(), dto.getInsumoId(), dto.getCantidadRequerida(), dto.getUnidadMedida())
+        );
+    }
+
+    // ─── KARDEX ───────────────────────────────────────────────────────────────
+
+    @GetMapping("/kardex/{insumoId}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<List<KardexMovimiento>> listarKardex(@PathVariable Long insumoId) {
+        return ResponseEntity.ok(inventarioService.listarKardexPorInsumo(insumoId));
+    }
+
+    // ─── MOVIMIENTOS (ENTRADA / MERMA / AJUSTE) ───────────────────────────────
+
     @PostMapping("/entradas")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> registrarEntrada(@RequestBody EntradaAlmacenRequestDTO dto, Authentication auth) {
-        Usuario usr = obtenerUsuarioAuth(auth);
-        inventarioService.registrarEntrada(dto, usr);
+        inventarioService.registrarEntrada(dto, obtenerUsuarioAuth(auth));
         return ResponseEntity.ok("Entrada registrada y Kardex actualizado (Promedio Ponderado recalculado).");
     }
 
     @PostMapping("/mermas")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> registrarMerma(@RequestBody MermaRequestDTO dto, Authentication auth) {
-        Usuario usr = obtenerUsuarioAuth(auth);
-        inventarioService.registrarMerma(dto, usr);
+        inventarioService.registrarMerma(dto, obtenerUsuarioAuth(auth));
         return ResponseEntity.ok("Merma registrada y stock descontado exitosamente.");
     }
 
     @PostMapping("/ajustes")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> registrarAjuste(@RequestBody AjusteInventarioRequestDTO dto, Authentication auth) {
-        Usuario usr = obtenerUsuarioAuth(auth);
-        inventarioService.registrarAjuste(dto, usr);
+        inventarioService.registrarAjuste(dto, obtenerUsuarioAuth(auth));
         return ResponseEntity.ok("Ajuste de inventario aplicado exitosamente.");
     }
 

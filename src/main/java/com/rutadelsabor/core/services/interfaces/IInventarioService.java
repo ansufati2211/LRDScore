@@ -14,12 +14,15 @@ public interface IInventarioService {
 
     Insumo crearInsumo(Insumo insumo);
     List<Insumo> listarInsumos();
+    List<Insumo> listarInsumosConStockBajo();
 
     Producto crearProducto(Producto producto);
     List<Producto> listarProductos();
 
     RecetaDetalle agregarInsumoAReceta(Long productoId, Long insumoId, BigDecimal cantidad, String unidadMedida);
     List<RecetaDetalle> obtenerRecetaPorProducto(Long productoId);
+
+    List<KardexMovimiento> listarKardexPorInsumo(Long insumoId);
 
     void registrarEntrada(EntradaAlmacenRequestDTO dto, Usuario usuario);
     void registrarMerma(MermaRequestDTO dto, Usuario usuario);
