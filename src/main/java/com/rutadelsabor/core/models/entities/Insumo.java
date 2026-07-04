@@ -28,6 +28,13 @@ public class Insumo extends BaseTenantEntity {
     @Column(name = "costo_unitario")
     private BigDecimal costoUnitario = BigDecimal.ZERO;
 
+    @Column(name = "stock_reservado", nullable = false)
+    private BigDecimal stockReservado = BigDecimal.ZERO;
+
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
+
+    public BigDecimal getStockDisponible() {
+        return stockActual.subtract(stockReservado);
+    }
 }

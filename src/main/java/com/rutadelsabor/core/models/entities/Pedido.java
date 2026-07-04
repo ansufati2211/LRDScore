@@ -51,6 +51,9 @@ public class Pedido extends BaseTenantEntity {
     @Column(name = "notas_generales", columnDefinition = "TEXT")
     private String notasGenerales;
 
+    @Column(name = "requiere_revision")
+    private Boolean requiereRevision = false;
+
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
 

@@ -18,15 +18,19 @@ public class PedidoActivoResponseDTO {
     private BigDecimal total;
     private LocalDateTime fechaCreacion;
     private List<DetallePlanoDTO> items;
+    private Boolean requiereRevision;
 
     @Getter
     @Setter
     public static class DetallePlanoDTO {
+        private Long detalleId;
         private Long productoId;
         private String nombreProducto;
         private Integer cantidad;
         private BigDecimal precioUnitario;
         private BigDecimal subtotal;
         private String notasPreparacion;
+        private String estadoItem;
+        private Integer numeroComanda;
     }
 }

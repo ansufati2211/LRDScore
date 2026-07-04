@@ -1,6 +1,9 @@
 package com.rutadelsabor.core.controllers;
 
+import com.rutadelsabor.core.annotations.RequiereModulo;
 import com.rutadelsabor.core.dto.response.DashboardVentasDTO;
+import com.rutadelsabor.core.dto.response.MargenVentasDTO;
+import com.rutadelsabor.core.models.enums.Modulo;
 import com.rutadelsabor.core.services.interfaces.IReporteService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -32,6 +35,16 @@ public class ReporteController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
         
         return ResponseEntity.ok(reporteService.obtenerResumenVentas(inicio, fin));
+    }
+
+    // R5-2/E5-3: gateado por ModuloInterceptor — lanza ModuloNoHabilitadoException si el plan no incluye REPORTES_AVANZADOS
+    @GetMapping("/margen")
+    @RequiereModulo(Modulo.REPORTES_AVANZADOS)
+    public ResponseEntity<MargenVentasDTO> obtenerMargen(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
+
+        return ResponseEntity.ok(reporteService.obtenerMargenVentas(inicio, fin));
     }
 
     // Endpoint para descargar el Excel

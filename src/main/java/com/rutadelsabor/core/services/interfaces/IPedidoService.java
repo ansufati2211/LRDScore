@@ -1,7 +1,10 @@
 package com.rutadelsabor.core.services.interfaces;
 
+import com.rutadelsabor.core.dto.request.AgregarItemsRequestDTO;
+import com.rutadelsabor.core.dto.request.DocumentoCobroRequestDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
+import com.rutadelsabor.core.dto.response.DocumentoCobroResponseDTO;
 import com.rutadelsabor.core.dto.response.PedidoActivoResponseDTO;
 import com.rutadelsabor.core.models.entities.Pedido;
 import com.rutadelsabor.core.models.entities.Usuario;
@@ -20,4 +23,11 @@ public interface IPedidoService {
     void cancelarPedido(Long id);
     List<PedidoActivoResponseDTO> listarPedidosActivos();
     List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin);
+
+    // Módulo 4
+    void agregarItemsAPedido(Long pedidoId, AgregarItemsRequestDTO dto);
+    void cancelarItem(Long pedidoId, Long detalleId, String motivo, boolean esGerente);
+    DocumentoCobroResponseDTO crearDocumentoCobro(Long pedidoId, DocumentoCobroRequestDTO dto);
+    DocumentoCobroResponseDTO pagarDocumentoCobro(Long documentoId, PagoRequestDTO pagoDTO, Long cajeroId);
+    List<DocumentoCobroResponseDTO> listarDocumentosCobro(Long pedidoId);
 }

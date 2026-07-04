@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -39,10 +40,19 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, "Recurso No Encontrado", ex.getMessage(), request, null);
     }
 
-    // 4. Reglas de negocio / stock insuficiente
-    @ExceptionHandler({ReglaNegocioException.class, StockInsuficienteException.class})
-    public ResponseEntity<ErrorResponseDTO> handleReglasNegocio(RuntimeException ex, HttpServletRequest request) {
+    // 4. Reglas de negocio
+    @ExceptionHandler(ReglaNegocioException.class)
+    public ResponseEntity<ErrorResponseDTO> handleReglasNegocio(ReglaNegocioException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, "Error de Regla de Negocio", ex.getMessage(), request, null);
+    }
+
+    // 4b. Stock insuficiente al confirmar pedido (R3-1) — devuelve detalle por insumo
+    @ExceptionHandler(StockInsuficienteException.class)
+    public ResponseEntity<StockInsuficienteResponseDTO> handleStockInsuficiente(StockInsuficienteException ex, HttpServletRequest request) {
+        StockInsuficienteResponseDTO body = new StockInsuficienteResponseDTO(
+                LocalDateTime.now(ZoneId.systemDefault()), 422, "Stock Insuficiente",
+                ex.getMessage(), request.getRequestURI(), "STOCK_INSUFICIENTE", ex.getFaltantes());
+        return new ResponseEntity<>(body, HttpStatusCode.valueOf(422));
     }
 
     // 5. Validación de campos @Valid

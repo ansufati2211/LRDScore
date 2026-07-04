@@ -1,7 +1,11 @@
 package com.rutadelsabor.core.controllers;
 
+import com.rutadelsabor.core.dto.request.AgregarItemsRequestDTO;
+import com.rutadelsabor.core.dto.request.CancelarItemRequestDTO;
+import com.rutadelsabor.core.dto.request.DocumentoCobroRequestDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
+import com.rutadelsabor.core.dto.response.DocumentoCobroResponseDTO;
 import com.rutadelsabor.core.dto.response.PedidoActivoResponseDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.models.entities.Pedido;
@@ -119,5 +123,58 @@ public class PedidoController {
         return ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.TEXT_PLAIN)
                 .body(ticketManager.generarTicketTermico(pedido));
+    }
+
+    // --- MÓDULO 4 ---
+
+    // R4-1/R4-2: agregar ítems a un pedido confirmado; reserva y notifica solo los nuevos
+    @PostMapping("/{id}/items")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<String> agregarItems(@PathVariable Long id,
+                                               @RequestBody AgregarItemsRequestDTO dto) {
+        pedidoService.agregarItemsAPedido(id, dto);
+        return ResponseEntity.ok("Ítems agregados y enviados a cocina.");
+    }
+
+    // R4-5/R4-6/E4-1: cancelar ítem individual; ENTREGADO requiere GERENTE y motivo
+    @PutMapping("/{id}/items/{detalleId}/cancelar")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<String> cancelarItem(@PathVariable Long id,
+                                               @PathVariable Long detalleId,
+                                               @RequestBody(required = false) CancelarItemRequestDTO dto,
+                                               Authentication auth) {
+        boolean esGerente = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_GERENTE")
+                            || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+        String motivo = dto != null ? dto.getMotivo() : null;
+        pedidoService.cancelarItem(id, detalleId, motivo, esGerente);
+        return ResponseEntity.ok("Ítem cancelado.");
+    }
+
+    // R4-3: crear documento de cobro (split por ítem o por monto)
+    @PostMapping("/{id}/documentos-cobro")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    public ResponseEntity<DocumentoCobroResponseDTO> crearDocumentoCobro(
+            @PathVariable Long id,
+            @RequestBody DocumentoCobroRequestDTO dto) {
+        return ResponseEntity.ok(pedidoService.crearDocumentoCobro(id, dto));
+    }
+
+    // R4-3/R4-4: listar documentos de cobro de un pedido
+    @GetMapping("/{id}/documentos-cobro")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    public ResponseEntity<List<DocumentoCobroResponseDTO>> listarDocumentosCobro(@PathVariable Long id) {
+        return ResponseEntity.ok(pedidoService.listarDocumentosCobro(id));
+    }
+
+    // R4-4/E4-3: pagar un documento de cobro individual
+    @PostMapping("/documentos-cobro/{documentoId}/pagar")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    public ResponseEntity<DocumentoCobroResponseDTO> pagarDocumentoCobro(
+            @PathVariable Long documentoId,
+            @RequestBody PagoRequestDTO pago,
+            Authentication auth) {
+        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
+        return ResponseEntity.ok(pedidoService.pagarDocumentoCobro(documentoId, pago, cajero.getUsuarioId()));
     }
 }

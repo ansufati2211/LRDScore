@@ -33,4 +33,13 @@ public interface IInventarioService {
     void registrarEntrada(EntradaAlmacenRequestDTO dto, Usuario usuario);
     void registrarMerma(MermaRequestDTO dto, Usuario usuario);
     void registrarAjuste(AjusteInventarioRequestDTO dto, Usuario usuario);
+
+    // Módulo 3: reserva/consumo/liberación por ciclo de pedido
+    void reservarInsumosParaPedido(Long pedidoId, List<PedidoDetalle> detalles);
+    void liberarReservaDePedido(Long pedidoId);
+    boolean convertirReservaAConsumo(Long pedidoId);
+
+    // Módulo 4: versiones recipe-based para soporte multi-comanda sin doble procesamiento
+    boolean convertirItemsAConsumo(Long pedidoId, List<PedidoDetalle> detalles);
+    void liberarReservaDeItems(Long pedidoId, List<PedidoDetalle> detalles);
 }

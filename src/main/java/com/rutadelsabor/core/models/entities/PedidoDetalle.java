@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.models.entities;
 
+import com.rutadelsabor.core.models.enums.EstadoItem;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -30,5 +31,19 @@ public class PedidoDetalle extends BaseTenantEntity {
     private BigDecimal subtotal;
 
     @Column(name = "notas_preparacion", columnDefinition = "TEXT")
-    private String notasPreparacion; // Ej: "Sin mayonesa"
+    private String notasPreparacion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_item", nullable = false, length = 20)
+    private EstadoItem estadoItem = EstadoItem.PENDIENTE;
+
+    @Column(name = "numero_comanda", nullable = false)
+    private Integer numeroComanda = 1;
+
+    @Column(name = "motivo_cancelacion", columnDefinition = "TEXT")
+    private String motivoCancelacion;
+
+    // R5-1: snapshot del costo promedio ponderado al consumir (EN_PREPARACION). No se recalcula.
+    @Column(name = "costo_unitario_consumido", precision = 12, scale = 4)
+    private BigDecimal costoUnitarioConsumido;
 }

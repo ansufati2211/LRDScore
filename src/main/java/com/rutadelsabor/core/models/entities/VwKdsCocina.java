@@ -62,4 +62,10 @@ public class VwKdsCocina {
 
     @Column(name = "tiempo_preparacion_minutos")
     private Integer tiempoPreparacionMinutos;
+
+    @Column(name = "estado_item")
+    private String estadoItem;
+
+    @Column(name = "numero_comanda")
+    private Integer numeroComanda;
 }

@@ -42,6 +42,9 @@ public class Producto extends BaseTenantEntity {
     @Column(name = "imagen_url", columnDefinition = "TEXT")
     private String imagenUrl;
 
+    @Column(name = "costo_referencial", precision = 12, scale = 4)
+    private BigDecimal costoReferencial;
+
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
 }

@@ -1,0 +1,732 @@
+================================================================================
+  LA RUTA DEL SABOR — DOCUMENTO DE CONTEXTO COMPLETO PARA IA
+  Generado: 2026-06-26  |  Versión del sistema: MVP funcional
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+1. RESUMEN EJECUTIVO
+────────────────────────────────────────────────────────────────────────────────
+
+"La Ruta del Sabor" (LRDScore) es un sistema de gestión integral para restaurantes,
+desarrollado como una plataforma SaaS multi-tenant. Permite que múltiples
+restaurantes (empresas) operen de forma aislada dentro de una sola instancia del
+servidor, compartiendo la infraestructura pero manteniendo sus datos completamente
+separados.
+
+Objetivo principal: digitalizar y optimizar las operaciones de un restaurante
+mediano, cubriendo el ciclo completo desde que el cliente hace un pedido hasta
+que se procesa el pago, incluyendo la gestión de cocina, inventario, caja y reportes.
+
+Mercado objetivo: Restaurantes medianos en Perú, especialmente aquellos que aún
+trabajan con papel o sistemas desconectados entre sí.
+
+Propuesta de valor:
+- Sistema unificado: mozo, cocina, caja y gerencia en una sola plataforma
+- Tiempo real: la cocina ve pedidos al instante vía SSE (sin polling)
+- Multi-tenant: un solo servidor puede atender N restaurantes
+- Costos bajos: stack open source + PostgreSQL
+
+Estado actual: MVP funcional con backend completo y frontend operativo para
+todos los roles del restaurante.
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. STACK TECNOLÓGICO
+────────────────────────────────────────────────────────────────────────────────
+
+BACKEND
+  Lenguaje:       Java 21
+  Framework:      Spring Boot 3.x
+  Seguridad:      Spring Security 6 + JWT (HS256)
+  Persistencia:   Spring Data JPA + Hibernate 6
+  Base de datos:  PostgreSQL 15+
+  Multi-tenancy:  Hibernate @TenantId (discriminador por columna empresa_id)
+  Reportes:       Apache POI (exportación Excel .xlsx)
+  Tiempo real:    SSE — Server-Sent Events (SseEmitter, Spring MVC)
+  Validación:     Jakarta Bean Validation (@NotBlank, @Email, @Size, etc.)
+  Build:          Maven
+  Seguridad API:  @PreAuthorize con hasAuthority() por endpoint
+
+FRONTEND
+  Lenguaje:       TypeScript 5
+  Framework:      React 19
+  Build tool:     Vite 8
+  Estilos:        Tailwind CSS v4 (@tailwindcss/vite plugin, sintaxis @import "tailwindcss")
+  Estado global:  Zustand (persistido en localStorage)
+  HTTP client:    Axios con interceptor JWT automático
+  Routing:        React Router v6 (BrowserRouter)
+  Iconos:         Lucide React
+  Proxy dev:      Vite proxy /api → localhost:8080
+
+INFRAESTRUCTURA / CONFIGURACIÓN
+  Variables de entorno:
+    DB_URL          — JDBC URL de PostgreSQL
+    DB_USERNAME     — usuario base de datos
+    DB_PASSWORD     — contraseña base de datos
+    JWT_SECRET      — clave secreta Base64 (256 bits mínimo en producción)
+    JWT_EXPIRATION_MS — tiempo de expiración token (default: 86400000 = 24h)
+    SERVER_PORT     — puerto del servidor (default: 8080)
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. ARQUITECTURA DEL SISTEMA
+────────────────────────────────────────────────────────────────────────────────
+
+3.1 ESTRUCTURA DE CAPAS (Backend)
+──────────────────────────────────
+  controllers/      REST endpoints con validación de roles (@PreAuthorize)
+  services/
+    interfaces/     Contratos de negocio (IXxxService)
+    impl/           Implementaciones de lógica de negocio
+    reportes/       TicketManager (tickets térmicos), generación Excel
+  repositories/     Spring Data JPA (interfaces de acceso a datos)
+  models/
+    entities/       Entidades JPA mapeadas a tablas PostgreSQL
+    enums/          EstadoPedido, RolUsuario, MetodoPago, EstadoCaja
+  dto/
+    request/        DTOs de entrada (validados con @Valid)
+    response/       DTOs de salida (proyecciones de datos)
+  security/         JWT filter, UserDetails, JwtProvider
+  config/           SseEmitterManager, OpenApiConfig
+  exceptions/       RecursoNoEncontradoException (mapea a HTTP 404)
+
+3.2 MULTI-TENANCY
+──────────────────
+  Todas las entidades del dominio extienden BaseTenantEntity, que contiene:
+    - id (Long, PK auto-increment)
+    - empresaId (Long, @TenantId — Hibernate inyecta filtro WHERE automático)
+    - createdAt / updatedAt (LocalDateTime, auto-gestionados)
+
+  El JWT incluye el claim "empresaId". Al autenticarse, JwtRequestFilter
+  extrae ese claim y lo guarda en TenantContext (ThreadLocal). Hibernate lo usa
+  automáticamente para filtrar todas las queries por empresa.
+
+  Resultado: una query SELECT * FROM pedidos se convierte automáticamente en
+  SELECT * FROM pedidos WHERE empresa_id = ? sin código adicional.
+
+3.3 AUTENTICACIÓN Y AUTORIZACIÓN
+──────────────────────────────────
+  Flujo de login:
+    POST /api/auth/login  →  { correo, password }
+    Response: { token, correo, rol, empresaId }
+
+  El token JWT contiene: sub (correo), empresaId, rol, iat, exp
+
+  JwtRequestFilter:
+    1. Lee header "Authorization: Bearer <token>"
+    2. Fallback: lee query param "?token=<jwt>" (necesario para EventSource/SSE)
+    3. Valida token, carga UserDetails, establece SecurityContext
+    4. Extrae empresaId → TenantContext
+
+  Roles y permisos:
+    ROLE_SUPER_ADMIN — acceso completo, gestión de empresas y usuarios
+    ROLE_GERENTE     — gestión operativa, reportes, sin crear empresas
+    ROLE_CAJERO      — caja, cobro de pedidos, historial
+    ROLE_MOZO        — crear/confirmar pedidos, entregar
+    ROLE_COCINA      — solo KDS (ver y actualizar estados de preparación)
+
+3.4 TIEMPO REAL (SSE)
+──────────────────────
+  SseEmitterManager (@Component, singleton):
+    - Mantiene lista CopyOnWriteArrayList<SseEmitter> (thread-safe)
+    - suscribir(): crea un emitter, registra limpieza en completion/timeout/error
+    - publicar(evento, datos): broadcast a todos los emitters activos
+
+  Eventos publicados:
+    "NUEVO_PEDIDO"    — cuando mozo confirma pedido (BORRADOR → RECIBIDO)
+                        payload: { pedidoId, mesa, estado: "RECIBIDO" }
+    "EN_PREPARACION"  — cuando cocina inicia preparación
+                        payload: { pedidoId, mesa, estado: "EN_PREPARACION" }
+    "PEDIDO_LISTO"    — cuando cocina marca pedido listo
+                        payload: { pedidoId, mesa, estado: "LISTO" }
+
+  Endpoint SSE: GET /api/kds/eventos  (acepta ?token= para EventSource)
+
+  Frontend:
+    KdsPage  escucha "NUEVO_PEDIDO" → recarga lista de pendientes
+    MozoPage escucha "PEDIDO_LISTO" y "EN_PREPARACION" → actualiza tarjetas
+
+3.5 ESTRUCTURA FRONTEND
+─────────────────────────
+  frontend/src/
+    api/
+      client.ts     — Axios con baseURL /api, interceptor JWT, redirect 401
+      auth.ts       — POST /auth/login
+      pedidos.ts    — CRUD pedidos, confirmar, entregar, cancelar
+      kds.ts        — pendientes KDS, marcarPreparando, marcarListo
+      reportes.ts   — getDashboard, getAlertasStock
+      caja.ts       — abrirCaja, cerrarCaja, getCajaActiva, procesarPago
+    store/
+      authStore.ts  — Zustand: token, user, setAuth, logout, isAuthenticated
+                      Persiste token en localStorage
+    types/
+      index.ts      — Interfaces compartidas (AuthResponse, PedidoActivo, etc.)
+    components/
+      PrivateRoute.tsx — Guarda de ruta: verifica auth + rol, redirige al home correcto
+    pages/
+      LoginPage.tsx    — Formulario login, redirige por rol tras autenticar
+      MozoPage.tsx     — Pantalla del mozo: crear pedidos, gestionar activos
+      KdsPage.tsx      — Kitchen Display System: cocina ve y gestiona pedidos
+      DashboardPage.tsx — Gerente: KPIs, gráfico barras SVG, alertas stock
+      CajeroPage.tsx   — Cajero: apertura/cierre caja, cobro multi-método
+
+  Redirección por rol tras login:
+    ROLE_COCINA      → /kds
+    ROLE_SUPER_ADMIN → /dashboard
+    ROLE_GERENTE     → /dashboard
+    ROLE_CAJERO      → /cajero
+    ROLE_MOZO        → /mozo
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. MODELO DE DATOS (Entidades)
+────────────────────────────────────────────────────────────────────────────────
+
+EMPRESA (tabla: empresas)
+  id               BIGSERIAL PK
+  nombre_comercial VARCHAR(100) NOT NULL
+  ruc              VARCHAR(11)
+  direccion        VARCHAR(255)
+  estado_registro  BOOLEAN DEFAULT true
+  created_at / updated_at
+
+USUARIO (tabla: usuarios) — extends BaseTenantEntity
+  id, empresa_id (tenant)
+  nombre           VARCHAR(100)
+  correo           VARCHAR(100) UNIQUE por empresa
+  password_hash    VARCHAR(255) — BCrypt
+  rol              VARCHAR(50)  — valores del enum RolUsuario
+  estado_registro  BOOLEAN      — soft delete
+
+CLIENTE (tabla: clientes) — extends BaseTenantEntity
+  id, empresa_id
+  nombre_razon_social VARCHAR(150)
+  tipo_documento  VARCHAR(20)  — DNI, RUC, CE, etc.
+  numero_documento VARCHAR(20)
+  direccion, correo, telefono
+
+CATEGORIA (tabla: categorias) — extends BaseTenantEntity
+  id, empresa_id
+  nombre
+
+PRODUCTO (tabla: productos) — extends BaseTenantEntity
+  id, empresa_id
+  categoria_id     FK → categorias
+  nombre           VARCHAR(100)
+  nombre_base      VARCHAR(100)  — para variantes (ej: "Lomo" → variante "GRANDE")
+  descripcion      TEXT
+  precio_venta     DECIMAL(10,2)
+  es_preparado     BOOLEAN       — si va a cocina o no
+  variante         VARCHAR(20) DEFAULT 'UNICO'
+  tiempo_preparacion_minutos INT DEFAULT 5
+  tags_busqueda    TEXT          — para búsqueda libre
+  imagen_url       TEXT
+  estado_registro  BOOLEAN       — soft delete
+
+INSUMO (tabla: insumos) — extends BaseTenantEntity
+  id, empresa_id
+  nombre           VARCHAR(100)
+  unidad_medida    VARCHAR(20)  — KG, LT, UND, etc.
+  stock_actual     DECIMAL(10,3)
+  stock_minimo     DECIMAL(10,3) — umbral de alerta
+  costo_unitario   DECIMAL(10,4) — para costo promedio ponderado
+  estado_registro  BOOLEAN
+
+RECETA_DETALLE (tabla: receta_detalles) — extends BaseTenantEntity
+  id, empresa_id
+  producto_id      FK → productos
+  insumo_id        FK → insumos
+  cantidad_requerida DECIMAL(10,4)
+  unidad_medida    VARCHAR(20)
+  estado_registro  BOOLEAN
+
+PEDIDO (tabla: pedidos) — extends BaseTenantEntity
+  id, empresa_id
+  mozo_id          FK → usuarios
+  cliente_id       FK → clientes (opcional)
+  sesion_caja_id   FK → sesiones_caja (se asigna al pagar)
+  tipo_consumo     VARCHAR(50)  — MESA | PARA_LLEVAR | DELIVERY
+  identificador_mesa_referencia VARCHAR(50)  — ej: "Mesa 3"
+  estado_actual    ENUM(EstadoPedido)
+  numero_orden     INT          — número secuencial diario
+  subtotal         DECIMAL(10,2)
+  descuento        DECIMAL(10,2) DEFAULT 0
+  total            DECIMAL(10,2)
+  notas_generales  TEXT
+  estado_registro  BOOLEAN
+
+PEDIDO_DETALLE (tabla: pedidos_detalle) — extends BaseTenantEntity
+  id, empresa_id
+  pedido_id        FK → pedidos
+  producto_id      FK → productos
+  cantidad         INT
+  precio_unitario  DECIMAL(10,2)
+  subtotal         DECIMAL(10,2)
+  notas_preparacion TEXT         — ej: "Sin cebolla"
+
+SESION_CAJA (tabla: sesiones_caja) — extends BaseTenantEntity
+  id, empresa_id
+  cajero_id        FK → usuarios
+  fecha_apertura   TIMESTAMP
+  fecha_cierre     TIMESTAMP
+  monto_inicial    DECIMAL(10,2)
+  monto_final_calculado  DECIMAL(10,2)  — calculado por sistema
+  monto_final_declarado  DECIMAL(10,2)  — ingresado por cajero al cerrar
+  diferencia       DECIMAL(10,2) GENERATED — (declarado - calculado)
+  estado           ENUM(EstadoCaja)     — ABIERTA | CERRADA
+
+TRANSACCION_PAGO (tabla: transacciones_pago) — extends BaseTenantEntity
+  id, empresa_id
+  pedido_id        FK → pedidos
+  sesion_caja_id   FK → sesiones_caja
+  metodo_pago      ENUM(MetodoPago)  — EFECTIVO | TARJETA | YAPE | PLIN | TRANSFERENCIA
+  monto            DECIMAL(10,2)
+  estado_pago      VARCHAR(50) DEFAULT 'COMPLETADO'
+  titular_tarjeta  VARCHAR(100)
+  ultimos_digitos_tarjeta VARCHAR(4)
+  numero_yape      VARCHAR(20)
+  referencia_pasarela VARCHAR(255)
+
+KARDEX_MOVIMIENTO (tabla: kardex_movimientos) — extends BaseTenantEntity
+  id, empresa_id
+  insumo_id        FK → insumos
+  tipo_movimiento  VARCHAR(30)  — ENTRADA | MERMA | AJUSTE | CONSUMO_PRODUCCION
+  cantidad         DECIMAL(10,4)
+  stock_anterior   DECIMAL(10,4)
+  stock_posterior  DECIMAL(10,4)
+  costo_unitario   DECIMAL(10,4)  — para promedio ponderado
+  pedido_id        BIGINT         — si es por producción
+  usuario_id       FK → usuarios  — quién hizo el movimiento
+  observacion      TEXT
+
+VISTAS (Views de PostgreSQL)
+  vw_kds_cocina — consulta optimizada para el KDS, incluye minutosTranscurridos
+  vw_dashboard_ventas — agregación de ventas para el reporte
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. FLUJO DE NEGOCIO PRINCIPAL
+────────────────────────────────────────────────────────────────────────────────
+
+5.1 CICLO DE VIDA DE UN PEDIDO
+───────────────────────────────
+  [MOZO]
+    1. Crea pedido con productos y cantidades → estado: BORRADOR
+       POST /api/pedidos
+    2. Cuando está completo, lo envía a cocina → estado: RECIBIDO
+       PUT /api/pedidos/{id}/confirmar
+       → SSE "NUEVO_PEDIDO" broadcast a todos los clientes
+
+  [COCINA — KDS]
+    3. Ve el pedido en columna "NUEVOS", lo toma → estado: EN_PREPARACION
+       PUT /api/kds/{pedidoId}/preparando
+       → SSE "EN_PREPARACION" broadcast
+    4. Termina de preparar → estado: LISTO
+       PUT /api/kds/{pedidoId}/listo
+       → SSE "PEDIDO_LISTO" broadcast
+
+  [MOZO]
+    5. Ve la tarjeta en verde "¡Listo!", lo lleva a la mesa → estado: ENTREGADO
+       PUT /api/pedidos/{id}/entregar
+
+  [CAJERO]
+    6. Ve pedido en su pantalla (ENTREGADO), abre modal de cobro
+    7. Selecciona métodos de pago (puede ser mixto, ej: S/10 Yape + S/5 Efectivo)
+       POST /api/pedidos/{id}/pagar  →  { sesionCajaId, pagos: [...] }
+    8. Sistema registra transacciones, descuenta stock de insumos (recetas),
+       acumula monto_final_calculado en sesión de caja → estado: PAGADO
+
+  [GERENTE]
+    9. Visualiza dashboard con KPIs del período y alertas de stock
+       GET /api/reportes/dashboard?inicio=&fin=
+       GET /api/inventario/alertas
+
+5.2 FLUJO DE INVENTARIO (automático al pagar)
+──────────────────────────────────────────────
+  Cuando un pedido se paga:
+    - Por cada producto en los detalles del pedido
+    - Si el producto tiene receta (receta_detalles)
+    - Se descuenta la cantidad de cada insumo de la receta × cantidad pedida
+    - Se registra un KardexMovimiento de tipo CONSUMO_PRODUCCION
+    - Si el stock cae por debajo de stock_minimo → aparece en alertas
+
+5.3 CICLO DE CAJA
+──────────────────
+  Cajero abre caja con monto inicial (fondo de cambio)
+    POST /api/caja/abrir  →  { montoInicial }
+    → SesionCaja en estado ABIERTA
+
+  Durante el turno: los pagos se acumulan en monto_final_calculado
+
+  Al cerrar el turno, cajero cuenta físicamente el dinero e ingresa el total
+    PUT /api/caja/cerrar/{id}  →  { montoFinalDeclarado }
+    → diferencia = declarado - calculado (cuadre de caja)
+    → SesionCaja en estado CERRADA
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. API REST — RESUMEN DE ENDPOINTS
+────────────────────────────────────────────────────────────────────────────────
+
+AUTH
+  POST  /api/auth/login           — login, devuelve JWT
+
+EMPRESAS  (SUPER_ADMIN, GERENTE)
+  GET   /api/empresas             — listar
+  GET   /api/empresas/{id}
+  POST  /api/empresas             — crear (solo SUPER_ADMIN)
+  PUT   /api/empresas/{id}        — actualizar (solo SUPER_ADMIN)
+
+USUARIOS  (SUPER_ADMIN, GERENTE)
+  GET   /api/usuarios
+  GET   /api/usuarios/{id}
+  POST  /api/usuarios             — crear (solo SUPER_ADMIN, requiere password)
+  PUT   /api/usuarios/{id}        — actualizar datos
+  DELETE /api/usuarios/{id}       — soft delete (solo SUPER_ADMIN)
+  PUT   /api/usuarios/{id}/password         — cambio contraseña propia (requiere passwordActual)
+  PUT   /api/usuarios/{id}/resetear-password — reset admin (solo SUPER_ADMIN)
+
+CLIENTES  (SUPER_ADMIN, GERENTE, CAJERO, MOZO)
+  GET   /api/clientes             — listar (solo GERENTE/ADMIN)
+  POST  /api/clientes             — crear
+  GET   /api/clientes/{id}
+  PUT   /api/clientes/{id}
+
+INVENTARIO — CATEGORÍAS
+  GET   /api/inventario/categorias        — todos los roles
+  POST  /api/inventario/categorias        — GERENTE, ADMIN
+
+INVENTARIO — PRODUCTOS
+  GET   /api/inventario/productos         — todos los roles
+  POST  /api/inventario/productos         — GERENTE, ADMIN
+  PUT   /api/inventario/productos/{id}
+  DELETE /api/inventario/productos/{id}   — soft delete
+
+INVENTARIO — INSUMOS
+  GET   /api/inventario/insumos           — GERENTE, ADMIN
+  POST  /api/inventario/insumos
+  PUT   /api/inventario/insumos/{id}
+  DELETE /api/inventario/insumos/{id}
+  GET   /api/inventario/alertas           — insumos con stock < stock_minimo
+
+INVENTARIO — RECETAS
+  GET   /api/inventario/recetas/{productoId}
+  POST  /api/inventario/recetas
+
+INVENTARIO — KARDEX / MOVIMIENTOS
+  GET   /api/inventario/kardex/{insumoId}
+  POST  /api/inventario/entradas          — entrada de almacén
+  POST  /api/inventario/mermas            — registrar merma
+  POST  /api/inventario/ajustes           — ajuste de inventario
+
+PEDIDOS
+  POST  /api/pedidos                      — crear borrador
+  GET   /api/pedidos/activos              — pedidos no terminados
+  GET   /api/pedidos/historial?inicio=&fin= — PAGADO/CANCELADO por período
+  GET   /api/pedidos/{id}
+  PUT   /api/pedidos/{id}/confirmar       — BORRADOR → RECIBIDO + SSE
+  PUT   /api/pedidos/{id}/entregar        — LISTO → ENTREGADO
+  POST  /api/pedidos/{id}/pagar           — procesar cobro multi-método
+  PUT   /api/pedidos/{id}/descuento?monto= — aplicar descuento (GERENTE)
+  PUT   /api/pedidos/{id}/cancelar        — cancelar (GERENTE)
+  GET   /api/pedidos/{id}/ticket          — ticket térmico en texto plano
+
+KDS (Kitchen Display System)
+  GET   /api/kds/pendientes               — pedidos RECIBIDO + EN_PREPARACION
+  PUT   /api/kds/{pedidoId}/preparando    — → EN_PREPARACION + SSE
+  PUT   /api/kds/{pedidoId}/listo         — → LISTO + SSE
+  GET   /api/kds/eventos                  — SSE stream (acepta ?token=)
+
+CAJA
+  POST  /api/caja/abrir                   — nueva sesión con monto inicial
+  PUT   /api/caja/cerrar/{id}             — cerrar con monto declarado
+  GET   /api/caja/activa                  — sesión abierta del cajero actual
+  GET   /api/caja/historial               — todas las sesiones del cajero
+
+REPORTES  (SUPER_ADMIN, GERENTE)
+  GET   /api/reportes/dashboard?inicio=&fin=  — KPIs + detalle diario JSON
+  GET   /api/reportes/excel?inicio=&fin=      — exportar .xlsx
+
+AI (deshabilitado por defecto)
+  /api/ai/*  — controlador condicional, activa con ai.module.enabled=true
+
+
+────────────────────────────────────────────────────────────────────────────────
+7. PANTALLAS DEL FRONTEND
+────────────────────────────────────────────────────────────────────────────────
+
+7.1 LOGIN (/login)
+  - Fondo con gradiente naranja (identidad visual)
+  - Formulario: correo + contraseña
+  - Redirige automáticamente al área del rol tras autenticarse
+  - Muestra error si credenciales inválidas
+
+7.2 MOZO (/mozo)  — roles: MOZO, CAJERO, GERENTE, ADMIN
+  Panel izquierdo:
+    - Selector tipo de consumo: MESA | PARA_LLEVAR | DELIVERY
+    - Campo número de mesa (aparece solo si es MESA)
+    - Buscador de productos en tiempo real
+    - Lista de productos con precio, click para agregar al carrito
+    - Carrito: +/- por ítem, total calculado, notas generales
+    - Botón "Crear pedido en borrador"
+  Panel derecho:
+    - Grid de tarjetas de pedidos activos
+    - Cada tarjeta: número, mesa, estado badge colorido, ítems, total
+    - Botón "Enviar a cocina" si está en BORRADOR
+    - Botón "Entregar ✓" si está en LISTO
+    - SSE: se actualiza automáticamente cuando cocina cambia estado
+
+7.3 KDS — COCINA (/kds)  — roles: COCINA, GERENTE, ADMIN
+  Tema oscuro (bg-gray-900)
+  Columna izquierda "NUEVOS":
+    - Tarjetas azules de pedidos RECIBIDO
+    - Muestra número de orden, mesa/tipo, lista de ítems con cantidad y notas
+    - Botón naranja "▶ Iniciar preparación"
+  Columna derecha "EN PREPARACIÓN":
+    - Tarjetas amarillas de pedidos EN_PREPARACION
+    - Botón verde "Marcar como LISTO"
+  Indicador conexión SSE (Wifi / WifiOff)
+  Sin botón de logout visible siempre (pero hay logout en header)
+
+7.4 DASHBOARD (/dashboard)  — roles: GERENTE, ADMIN
+  Filtro de fechas inicio/fin con botón Actualizar
+  Botón Exportar Excel (descarga directo al navegador)
+  2 cards KPI:
+    - Ingresos totales del período (S/)
+    - Pedidos pagados del período (cantidad)
+  Gráfico de barras SVG diario (sin librerías externas)
+    - Eje Y: ingresos (S/)
+    - Eje X: fecha (MM-DD)
+    - Escala automática según máximo del período
+  Tabla de alertas de stock bajo:
+    - Insumo, stock actual, stock mínimo, unidad, badge BAJO / SIN STOCK
+
+7.5 CAJERO (/cajero)  — roles: CAJERO, GERENTE, ADMIN
+  Panel de caja:
+    Si no hay caja abierta:
+      - Formulario apertura con monto inicial
+      - Si acaba de cerrar, muestra diferencia de la sesión anterior
+    Si hay caja abierta:
+      - Muestra hora de apertura y monto inicial
+      - Formulario de cierre con monto físico contado
+  Grid de pedidos ENTREGADO (pendientes de cobro):
+    - Tarjeta con borde morado, ítems, total
+    - Botón "Cobrar" → abre modal
+  Modal de cobro:
+    - Resumen de ítems y total del pedido
+    - Hasta 3 métodos de pago simultáneos
+    - Métodos: EFECTIVO (💵), YAPE (💜), PLIN (💚), TARJETA (💳)
+    - Monto por método editable
+    - Cálculo de vuelto en tiempo real
+    - Bloquea confirmación si el monto no cubre el total
+    - Tras éxito: muestra checkmark, enlace a ticket térmico
+
+
+────────────────────────────────────────────────────────────────────────────────
+8. SEGURIDAD
+────────────────────────────────────────────────────────────────────────────────
+
+- Contraseñas hasheadas con BCrypt (no se almacena texto plano)
+- JWT firmado con HMAC-SHA256, claim empresaId incluido
+- @JsonIgnoreProperties({"passwordHash"}) en entidad Usuario — nunca serializa el hash
+- @PreAuthorize en cada endpoint con lista explícita de roles permitidos
+- TenantContext como ThreadLocal — limpiado en finally block del filtro
+- Fallback ?token= para SSE limitado solo cuando no hay header Authorization
+- Separación de endpoints de contraseña: self-service vs admin-reset
+
+Vulnerabilidades conocidas y pendientes de producción:
+  - JWT_SECRET tiene valor por defecto inseguro (cambiar antes de producción)
+  - No implementado refresh token (expiración fija 24h)
+  - No implementado rate limiting en /api/auth/login
+  - No implementado HTTPS (debe configurarse en nginx/reverse proxy)
+
+
+────────────────────────────────────────────────────────────────────────────────
+9. MÓDULOS IMPLEMENTADOS vs PENDIENTES
+────────────────────────────────────────────────────────────────────────────────
+
+COMPLETADOS ✓
+  Backend:
+    [x] Auth JWT multi-tenant
+    [x] CRUD empresas
+    [x] CRUD usuarios (con password seguro y roles)
+    [x] CRUD clientes
+    [x] CRUD categorías
+    [x] CRUD productos (con soft delete)
+    [x] CRUD insumos (con stock mínimo y alertas)
+    [x] Recetas (relación producto-insumo con cantidades)
+    [x] Kardex (trazabilidad de movimientos de inventario)
+    [x] Entradas, mermas, ajustes de inventario
+    [x] Ciclo completo de pedidos (BORRADOR → PAGADO)
+    [x] Descuentos en pedidos
+    [x] Cancelación de pedidos
+    [x] KDS con estados de preparación
+    [x] SSE tiempo real (NUEVO_PEDIDO, EN_PREPARACION, PEDIDO_LISTO)
+    [x] Descuento de stock automático al pagar (por receta)
+    [x] Sesiones de caja (apertura/cierre con cuadre)
+    [x] Pagos multi-método (Efectivo, Yape, Plin, Tarjeta, Transferencia)
+    [x] Reportes de ventas (JSON + Excel)
+    [x] Ticket térmico en texto plano
+    [x] Alertas de stock bajo
+    [x] Historial de pedidos por período
+    [x] AI module (stub condicional para futuro)
+
+  Frontend:
+    [x] Login con redirección por rol
+    [x] Pantalla Mozo (carta + carrito + pedidos activos con SSE)
+    [x] KDS Cocina (oscuro, dos columnas, SSE)
+    [x] Dashboard Gerente (KPIs + gráfico + alertas)
+    [x] Pantalla Cajero (caja + cobro multi-método)
+    [x] Rutas protegidas por rol
+    [x] Estado global persistido (Zustand + localStorage)
+
+PENDIENTES / IDEAS A IMPLEMENTAR ✗
+  Backend:
+    [ ] Refresh tokens (JWT de larga duración + refresh de corta)
+    [ ] Rate limiting en login (prevenir brute force)
+    [ ] Notificaciones push (WebSocket o Firebase FCM)
+    [ ] Módulo de reservas de mesa
+    [ ] Facturación electrónica (SUNAT - SOAP o REST)
+    [ ] Integración pasarela de pagos (Culqi, Izipay)
+    [ ] Módulo de proveedores (compras, órdenes de compra)
+    [ ] Módulo de delivery con geolocalización
+    [ ] Costo de ventas calculado (para margen bruto en reportes)
+    [ ] Multi-idioma (i18n)
+    [ ] Módulo de fidelización de clientes (puntos, historial)
+    [ ] Backup automático de base de datos
+
+  Frontend:
+    [ ] Gestión de usuarios/productos/insumos desde la UI (actualmente solo API)
+    [ ] Panel de configuración de la empresa
+    [ ] Historial de pedidos pagados con filtros
+    [ ] Modo offline básico (Service Worker / cache)
+    [ ] App móvil (React Native o PWA)
+    [ ] Imágenes de productos
+    [ ] Variantes de productos en el menú (tamaños)
+    [ ] Carta digital para clientes (QR → menú web)
+
+  Infraestructura:
+    [ ] Docker Compose (backend + frontend + postgres)
+    [ ] CI/CD pipeline
+    [ ] Dominio + SSL
+    [ ] Backups automatizados PostgreSQL
+    [ ] Monitoreo (logs centralizados, métricas)
+    [ ] Plan de escalabilidad horizontal (si crece a N empresas)
+
+
+────────────────────────────────────────────────────────────────────────────────
+10. MODELO DE NEGOCIO (SaaS)
+────────────────────────────────────────────────────────────────────────────────
+
+Modelo actual (hipotético):
+  El sistema está diseñado para ser multi-tenant desde su arquitectura base.
+  Un solo despliegue puede atender múltiples restaurantes con datos aislados.
+
+Posibles modelos de monetización a evaluar:
+  - Suscripción mensual por restaurante (modelo SaaS clásico)
+    Ej: S/99/mes básico, S/199/mes con módulos avanzados
+  - Freemium: versión gratuita limitada (1 caja, 5 productos) + pago por upgrades
+  - Por volumen de transacciones (% pequeño sobre cada pedido procesado)
+  - Setup fee + mensualidad (común en mercado peruano de software empresarial)
+  - Licencia perpetua para restaurantes que quieran servidor propio
+
+Segmentación potencial de clientes:
+  Tier 1: Restaurante pequeño (1 local, 1-2 mozos, 1 cajero)
+  Tier 2: Restaurante mediano (1-3 locales, equipo completo)
+  Tier 3: Cadena (N locales, cada uno como tenant separado, reportes consolidados)
+
+Competidores referentes en Perú:
+  - Rest (software local)
+  - Alegra POS
+  - El Mandado
+  - Waiter (app mozo)
+  - Sistemas custom hechos a medida
+
+
+────────────────────────────────────────────────────────────────────────────────
+11. ESTRUCTURA DE CARPETAS DEL REPOSITORIO
+────────────────────────────────────────────────────────────────────────────────
+
+LRDScore/
+  src/main/java/com/rutadelsabor/core/
+    config/           — SseEmitterManager, OpenApiConfig
+    controllers/      — AuthController, EmpresaController, UsuarioController,
+                        ClienteController, PedidoController, KdsController,
+                        InventarioController, CajaController, ReporteController,
+                        AiIntegrationController (stub)
+    dto/
+      request/        — PedidoRequestDTO, UsuarioRequestDTO, PagoRequestDTO,
+                        PagoItemDTO, SesionCajaRequestDTO, CambiarPasswordDTO,
+                        InsumoRequestDTO, ProductoRequestDTO, RecetaRequestDTO,
+                        EntradaAlmacenRequestDTO, MermaRequestDTO, AjusteInventarioRequestDTO
+      response/       — PedidoActivoResponseDTO, DashboardVentasDTO
+    exceptions/       — RecursoNoEncontradoException
+    models/
+      entities/       — (ver sección 4)
+      enums/          — EstadoPedido, EstadoCaja, MetodoPago, RolUsuario
+    repositories/     — UsuarioRepository, EmpresaRepository, PedidoRepository,
+                        InventarioRepository, CajaRepository, etc.
+    security/         — JwtProvider, JwtRequestFilter, UserDetailsImpl,
+                        UserDetailsServiceImpl
+    services/
+      interfaces/     — IPedidoService, IUsuarioService, IInventarioService,
+                        ICajaService, IReporteService, IKdsService
+      impl/           — PedidoServiceImpl, UsuarioServiceImpl, InventarioServiceImpl,
+                        CajaServiceImpl, ReporteServiceImpl, KdsServiceImpl
+      reportes/       — TicketManager (tickets térmicos), generación Excel
+  src/main/resources/
+    application.properties
+
+  frontend/
+    src/
+      api/            — client.ts, auth.ts, pedidos.ts, kds.ts, reportes.ts, caja.ts
+      components/     — PrivateRoute.tsx
+      pages/          — LoginPage.tsx, MozoPage.tsx, KdsPage.tsx,
+                        DashboardPage.tsx, CajeroPage.tsx
+      store/          — authStore.ts
+      types/          — index.ts
+      App.tsx, main.tsx, index.css
+    vite.config.ts
+    tsconfig.app.json
+    package.json
+
+
+────────────────────────────────────────────────────────────────────────────────
+12. DECISIONES TÉCNICAS CLAVE
+────────────────────────────────────────────────────────────────────────────────
+
+1. Multi-tenancy por columna vs esquema:
+   Se eligió columna (empresa_id) sobre esquema separado por simplicidad de
+   migración y compatibilidad nativa con @TenantId de Hibernate 6.
+   Trade-off: menor aislamiento físico, pero suficiente para el tamaño del mercado.
+
+2. SSE sobre WebSocket:
+   SSE es unidireccional (server → client) y suficiente para los casos de uso
+   (notificar pedidos listos). Es más simple de implementar y escala bien con
+   un load balancer sticky-session. WebSocket sería necesario solo si el cliente
+   necesita enviar mensajes al servidor en tiempo real.
+
+3. Sin ORM con esquema automático (ddl-auto=none):
+   La base de datos se gestiona con scripts SQL versionados. Esto da control
+   total sobre índices, vistas (vw_kds_cocina, vw_dashboard_ventas), columnas
+   generadas (diferencia en sesiones_caja) y constraints.
+
+4. Gráfico SVG sin librería:
+   DashboardPage implementa un gráfico de barras con SVG puro para evitar
+   agregar dependencias pesadas (Recharts, Chart.js). Trade-off: menos features,
+   pero bundle más pequeño.
+
+5. Pago multi-método:
+   Una sola transacción de pedido puede tener múltiples TransaccionPago.
+   Esto permite dividir el pago (Yape S/10 + Efectivo S/5.50) sin complejidad
+   extra. El total se valida en el frontend antes de enviar.
+
+6. Soft delete universal:
+   Todos los recursos usan estado_registro=false en lugar de DELETE físico.
+   Preserva integridad referencial e historial para reportes.
+
+
+================================================================================
+  FIN DEL DOCUMENTO — La Ruta del Sabor — LRDScore
+  Preparado para consulta con IA (ChatGPT, Claude, Gemini, etc.)
+================================================================================

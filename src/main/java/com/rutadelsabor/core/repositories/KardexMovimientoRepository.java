@@ -8,4 +8,6 @@ import java.util.List;
 @Repository
 public interface KardexMovimientoRepository extends JpaRepository<KardexMovimiento, Long> {
     List<KardexMovimiento> findByInsumoIdOrderByCreatedAtDesc(Long insumoId);
+
+    List<KardexMovimiento> findByPedidoIdAndTipoMovimiento(Long pedidoId, String tipoMovimiento);
 }
