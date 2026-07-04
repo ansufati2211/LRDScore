@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.models.entities;
 
+import com.rutadelsabor.core.models.enums.EstadoDisponibilidad;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -44,6 +45,10 @@ public class Producto extends BaseTenantEntity {
 
     @Column(name = "costo_referencial", precision = 12, scale = 4)
     private BigDecimal costoReferencial;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_disponibilidad", nullable = false, length = 20)
+    private EstadoDisponibilidad estadoDisponibilidad = EstadoDisponibilidad.DISPONIBLE;
 
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;

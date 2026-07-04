@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.config.SseEmitterManager;
+import com.rutadelsabor.core.dto.response.PorcionDisponibleDTO;
 import com.rutadelsabor.core.models.entities.VwKdsCocina;
 import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IKdsService;
@@ -48,6 +49,37 @@ public class KdsController {
     public ResponseEntity<String> marcarListo(@PathVariable Long id) {
         kdsService.marcarListo(id);
         return ResponseEntity.ok("Plato listo. Mozo notificado en tiempo real.");
+    }
+
+    // R6-1: marcar AGOTADO_TEMPORAL — reversible desde cocina
+    @PutMapping("/productos/{productoId}/agotado-temporal")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
+    public ResponseEntity<String> marcarAgotadoTemporal(@PathVariable Long productoId) {
+        kdsService.marcarAgotadoTemporal(productoId);
+        return ResponseEntity.ok("Producto marcado como AGOTADO_TEMPORAL.");
+    }
+
+    // R6-2: marcar AGOTADO_SERVICIO — bloqueado hasta cierre de caja
+    @PutMapping("/productos/{productoId}/agotado-servicio")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
+    public ResponseEntity<String> marcarAgotadoServicio(@PathVariable Long productoId) {
+        kdsService.marcarAgotadoServicio(productoId);
+        return ResponseEntity.ok("Producto marcado como AGOTADO_SERVICIO.");
+    }
+
+    // E6-2: revertir AGOTADO_TEMPORAL → DISPONIBLE (AGOTADO_SERVICIO es rechazado)
+    @PutMapping("/productos/{productoId}/disponible")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
+    public ResponseEntity<String> revertirDisponible(@PathVariable Long productoId) {
+        kdsService.revertirDisponible(productoId);
+        return ResponseEntity.ok("Producto restablecido a DISPONIBLE.");
+    }
+
+    // R6-5: porciones disponibles por receta — advertencia automática al mozo
+    @GetMapping("/productos/porciones")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA') or hasAuthority('ROLE_MOZO')")
+    public ResponseEntity<List<PorcionDisponibleDTO>> obtenerPorciones() {
+        return ResponseEntity.ok(kdsService.calcularPorcionesDisponibles());
     }
 
     /**

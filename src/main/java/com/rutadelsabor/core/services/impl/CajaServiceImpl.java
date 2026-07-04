@@ -1,12 +1,17 @@
 package com.rutadelsabor.core.services.impl;
 
+import com.rutadelsabor.core.config.SseEmitterManager;
+import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
+import com.rutadelsabor.core.models.entities.Producto;
 import com.rutadelsabor.core.models.entities.SesionCaja;
 import com.rutadelsabor.core.models.entities.Usuario;
 import com.rutadelsabor.core.models.enums.EstadoCaja;
+import com.rutadelsabor.core.models.enums.EstadoDisponibilidad;
 import com.rutadelsabor.core.models.enums.MetodoPago;
 import com.rutadelsabor.core.repositories.CajaRepository;
+import com.rutadelsabor.core.repositories.ProductoRepository;
 import com.rutadelsabor.core.repositories.TransaccionPagoRepository;
 import com.rutadelsabor.core.repositories.UsuarioRepository;
 import com.rutadelsabor.core.services.interfaces.ICajaService;
@@ -16,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class CajaServiceImpl implements ICajaService {
@@ -23,13 +29,19 @@ public class CajaServiceImpl implements ICajaService {
     private final CajaRepository cajaRepository;
     private final UsuarioRepository usuarioRepository;
     private final TransaccionPagoRepository transaccionPagoRepository;
+    private final ProductoRepository productoRepository;
+    private final SseEmitterManager sseEmitterManager;
 
     public CajaServiceImpl(CajaRepository cajaRepository,
                            UsuarioRepository usuarioRepository,
-                           TransaccionPagoRepository transaccionPagoRepository) {
+                           TransaccionPagoRepository transaccionPagoRepository,
+                           ProductoRepository productoRepository,
+                           SseEmitterManager sseEmitterManager) {
         this.cajaRepository = cajaRepository;
         this.usuarioRepository = usuarioRepository;
         this.transaccionPagoRepository = transaccionPagoRepository;
+        this.productoRepository = productoRepository;
+        this.sseEmitterManager = sseEmitterManager;
     }
 
     @Override
@@ -69,7 +81,20 @@ public class CajaServiceImpl implements ICajaService {
         sesion.setFechaCierre(LocalDateTime.now());
         sesion.setMontoFinalDeclarado(montoFinalDeclarado);
 
-        return cajaRepository.save(sesion);
+        SesionCaja sesionCerrada = cajaRepository.save(sesion);
+
+        // R6-3/E6-3: reset masivo de AGOTADO_SERVICIO → DISPONIBLE al cerrar caja
+        List<Producto> agotados = productoRepository.findByEstadoDisponibilidad(EstadoDisponibilidad.AGOTADO_SERVICIO);
+        if (!agotados.isEmpty()) {
+            agotados.forEach(p -> p.setEstadoDisponibilidad(EstadoDisponibilidad.DISPONIBLE));
+            productoRepository.saveAll(agotados);
+            sseEmitterManager.publicarTenant(TenantContext.getCurrentTenant(), "RESET_DISPONIBILIDAD", Map.of(
+                    "count", agotados.size(),
+                    "mensaje", "Productos AGOTADO_SERVICIO restablecidos al cierre de caja"
+            ));
+        }
+
+        return sesionCerrada;
     }
 
     @Override

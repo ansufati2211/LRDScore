@@ -12,6 +12,7 @@ import com.rutadelsabor.core.dto.response.PedidoActivoResponseDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.*;
+import com.rutadelsabor.core.models.enums.EstadoDisponibilidad;
 import com.rutadelsabor.core.models.enums.EstadoItem;
 import com.rutadelsabor.core.models.enums.EstadoPedido;
 import com.rutadelsabor.core.repositories.*;
@@ -104,6 +105,17 @@ public class PedidoServiceImpl implements IPedidoService {
         Pedido pedido = obtenerPedido(id);
         if (pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
             throw new ReglaNegocioException("Solo un pedido en BORRADOR puede ser confirmado hacia la cocina.");
+        }
+
+        // E6-1: rechazar confirmación si hay productos agotados en el pedido
+        List<String> agotados = pedido.getDetalles().stream()
+                .map(PedidoDetalle::getProducto)
+                .filter(p -> p.getEstadoDisponibilidad() != EstadoDisponibilidad.DISPONIBLE)
+                .map(Producto::getNombre)
+                .collect(Collectors.toList());
+        if (!agotados.isEmpty()) {
+            throw new ReglaNegocioException(
+                    "El pedido contiene producto(s) agotado(s) y no puede confirmarse: " + String.join(", ", agotados));
         }
 
         // R3-1: reservar insumos por receta; lanza StockInsuficienteException con detalle si falta stock
