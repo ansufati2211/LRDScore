@@ -2,10 +2,15 @@ package com.rutadelsabor.core.config.security;
 
 import com.rutadelsabor.core.config.tenant.TenantInterceptor;
 import com.rutadelsabor.core.interceptors.ModuloInterceptor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.util.Arrays;
 
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
@@ -25,19 +30,36 @@ public class CorsConfig implements WebMvcConfigurer {
         registry.addInterceptor(moduloInterceptor).addPathPatterns("/api/**");
     }
 
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
-                // 2. Orígenes específicos en lugar de "*" (Resuelve java:S5122)
-                // Aquí agregamos los puertos típicos de desarrollo de React (3000) y Vite (5173).
-                // Cuando subas tu frontend a internet, solo agregas tu URL de Vercel/Netlify aquí.
-                .allowedOrigins(
-                        "http://localhost:3000", 
-                        "http://localhost:5173",
-                        "https://larutadelsabor-frontend.vercel.app" // Ejemplo de producción
-                )
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
-                .allowedHeaders("Authorization", "Content-Type", "X-Empresa-ID", "Accept")
-                .allowCredentials(true);
+    /* * COMENTADO: Spring Security intercepta antes que WebMvcConfigurer. 
+     * Se reemplaza por el Bean CorsConfigurationSource de abajo para que funcione globalmente.
+     * * @Override
+     * public void addCorsMappings(CorsRegistry registry) {
+     * registry.addMapping("/**")
+     * .allowedOrigins("http://localhost:3000", "http://localhost:5173", "https://larutadelsabor-frontend.vercel.app")
+     * .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
+     * .allowedHeaders("Authorization", "Content-Type", "X-Empresa-ID", "Accept")
+     * .allowCredentials(true);
+     * }
+     */
+
+    // Nuevo Bean que Spring Security detectará automáticamente
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        
+        // ¡CAMBIO CLAVE! Acepta cualquier puerto local de desarrollo
+        config.setAllowedOriginPatterns(Arrays.asList(
+                "http://localhost:*", 
+                "http://127.0.0.1:*",
+                "https://larutadelsabor-frontend.vercel.app"
+        ));
+        
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Empresa-ID", "Accept", "Origin"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }

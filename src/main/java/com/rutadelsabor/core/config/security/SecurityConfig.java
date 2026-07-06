@@ -30,11 +30,13 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource)) // <-- Aquí se inyecta el CORS correctamente
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll() // Rutas públicas
+                .requestMatchers("/api/auth/**").permitAll() // Rutas públicas (Login)
+                .requestMatchers("/api/kds/eventos").permitAll() // SSE para la cocina/mozo
+                .requestMatchers("/api/dialogflow/**").permitAll() // Integración de IA
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger
                 .anyRequest().authenticated()
             );
