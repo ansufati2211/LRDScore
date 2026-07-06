@@ -1,6 +1,8 @@
 ================================================================================
   LA RUTA DEL SABOR — DOCUMENTO DE CONTEXTO COMPLETO PARA IA
-  Generado: 2026-06-26  |  Versión del sistema: MVP funcional
+  Generado: 2026-06-26  |  Actualizado: 2026-07-06  |  Versión del sistema: MVP en desarrollo local
+  Nota: esta actualización se hizo leyendo el código fuente real (no la versión anterior del
+  documento), que había quedado desactualizada respecto a los Módulos 0, 4, 5, 6 y 7.
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -15,57 +17,73 @@ separados.
 
 Objetivo principal: digitalizar y optimizar las operaciones de un restaurante
 mediano, cubriendo el ciclo completo desde que el cliente hace un pedido hasta
-que se procesa el pago, incluyendo la gestión de cocina, inventario, caja y reportes.
+que se procesa el pago (incluyendo pagos mixtos y cuentas divididas), la gestión
+de cocina, inventario con costeo real, caja, comprobantes de venta y reportes.
 
 Mercado objetivo: Restaurantes medianos en Perú, especialmente aquellos que aún
 trabajan con papel o sistemas desconectados entre sí.
 
 Propuesta de valor:
 - Sistema unificado: mozo, cocina, caja y gerencia en una sola plataforma
-- Tiempo real: la cocina ve pedidos al instante vía SSE (sin polling)
-- Multi-tenant: un solo servidor puede atender N restaurantes
+- Tiempo real: la cocina y el mozo ven cambios de estado al instante vía SSE (sin polling)
+- Multi-tenant con planes: un solo servidor atiende N restaurantes, cada uno con
+  su propio plan de suscripción que habilita/restringe módulos (Módulo 0)
 - Costos bajos: stack open source + PostgreSQL
 
-Estado actual: MVP funcional con backend completo y frontend operativo para
-todos los roles del restaurante.
+Estado actual: backend con los Módulos 0 a 7 de la especificación implementados
+(entitlements por plan, ciclo de pedidos con comandas y split de cuentas, doble
+disponibilidad "86", costeo/margen real, comprobantes de venta con IGV). El
+frontend, en cambio, solo cubre el flujo original de 5 pantallas — la UI para
+split de pagos, agregar ítems, doble 86 y comprobantes de venta AÚN NO EXISTE
+(ver sección 7 y 9). Entorno de trabajo: desarrollo local, zona horaria forzada
+a America/Lima (GMT-5) tanto en el JVM como en la serialización JSON.
 
 
 ────────────────────────────────────────────────────────────────────────────────
 2. STACK TECNOLÓGICO
 ────────────────────────────────────────────────────────────────────────────────
 
-BACKEND
-  Lenguaje:       Java 21
-  Framework:      Spring Boot 3.x
-  Seguridad:      Spring Security 6 + JWT (HS256)
-  Persistencia:   Spring Data JPA + Hibernate 6
-  Base de datos:  PostgreSQL 15+
+BACKEND (repositorio: LRDScore)
+  Lenguaje:       Java 21 (pom.xml corregido de 25 → 21 para coincidir con el JDK instalado)
+  Framework:      Spring Boot 4.0.6 (spring-boot-starter-parent)
+  Seguridad:      Spring Security 7 + JWT (HS256, io.jsonwebtoken 0.12.5)
+  Persistencia:   Spring Data JPA + Hibernate ORM 7.2 (ddl-auto=none, scripts SQL versionados)
+  Base de datos:  PostgreSQL
   Multi-tenancy:  Hibernate @TenantId (discriminador por columna empresa_id)
-  Reportes:       Apache POI (exportación Excel .xlsx)
-  Tiempo real:    SSE — Server-Sent Events (SseEmitter, Spring MVC)
+  Entitlements:   ModuloInterceptor + @RequiereModulo — gatea endpoints por plan/suscripción
+  Reportes:       Apache POI (Excel .xlsx), JasperReports y OpenPDF también en classpath
+  Tiempo real:    SSE — Server-Sent Events (SseEmitter, Spring MVC), indexado por
+                  (empresaId, usuarioId) y con broadcast por rol
   Validación:     Jakarta Bean Validation (@NotBlank, @Email, @Size, etc.)
-  Build:          Maven
-  Seguridad API:  @PreAuthorize con hasAuthority() por endpoint
+  Build:          Maven (mvnw incluido)
+  Seguridad API:  @PreAuthorize con hasAuthority() por endpoint + interceptor de módulo
 
-FRONTEND
-  Lenguaje:       TypeScript 5
-  Framework:      React 19
-  Build tool:     Vite 8
-  Estilos:        Tailwind CSS v4 (@tailwindcss/vite plugin, sintaxis @import "tailwindcss")
-  Estado global:  Zustand (persistido en localStorage)
-  HTTP client:    Axios con interceptor JWT automático
-  Routing:        React Router v6 (BrowserRouter)
+FRONTEND (repositorio separado: LRDS_Front — ya NO vive dentro de LRDScore/frontend)
+  Lenguaje:       TypeScript 6
+  Framework:      React 19.2
+  Build tool:     Vite 8.1
+  Gestor paquetes: pnpm (no npm/yarn)
+  Linter:         oxlint (no ESLint)
+  Estilos:        Tailwind CSS v4 (@tailwindcss/vite plugin)
+  Estado global:  Zustand 5 (persistido en localStorage)
+  HTTP client:    Axios 1.18 — apunta directo a http://localhost:8080/api (baseURL hardcodeada,
+                  ya no pasa por el proxy de Vite)
+  Routing:        React Router v7 (BrowserRouter)
   Iconos:         Lucide React
-  Proxy dev:      Vite proxy /api → localhost:8080
 
-INFRAESTRUCTURA / CONFIGURACIÓN
+INFRAESTRUCTURA / CONFIGURACIÓN (application.properties)
   Variables de entorno:
-    DB_URL          — JDBC URL de PostgreSQL
-    DB_USERNAME     — usuario base de datos
-    DB_PASSWORD     — contraseña base de datos
-    JWT_SECRET      — clave secreta Base64 (256 bits mínimo en producción)
-    JWT_EXPIRATION_MS — tiempo de expiración token (default: 86400000 = 24h)
-    SERVER_PORT     — puerto del servidor (default: 8080)
+    DB_URL                    — JDBC URL de PostgreSQL (default: localhost:5432/lrds_db)
+    DB_USERNAME / DB_PASSWORD — credenciales BD
+    JWT_SECRET                — clave secreta Base64 (tiene valor por defecto inseguro
+                                 hardcodeado; irrelevante en local, cambiar antes de producción)
+    JWT_EXPIRATION_MS         — expiración token estándar (default: 86400000 = 24h)
+    JWT_EXPIRATION_MS_COCINA  — expiración especial para el rol COCINA (default: 2592000000 = 30 días)
+    SERVER_PORT               — puerto del servidor (default: 8080)
+    ai.module.enabled         — activa AiIntegrationController (default: false; controlador
+                                 actualmente vacío, ver sección 9)
+  Zona horaria: forzada a America/Lima en CoreApplication.main() vía TimeZone.setDefault(),
+    más spring.jackson.time-zone=America/Lima para que Jackson serialice en la misma zona.
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -75,82 +93,114 @@ INFRAESTRUCTURA / CONFIGURACIÓN
 3.1 ESTRUCTURA DE CAPAS (Backend)
 ──────────────────────────────────
   controllers/      REST endpoints con validación de roles (@PreAuthorize)
+  interceptors/      ModuloInterceptor — gate de entitlements por plan (Módulo 0)
+  annotations/        @RequiereModulo — marca endpoints premium
   services/
     interfaces/     Contratos de negocio (IXxxService)
     impl/           Implementaciones de lógica de negocio
-    reportes/       TicketManager (tickets térmicos), generación Excel
+    reportes/       TicketManager (tickets térmicos), ExcelReportManager (Excel)
+    EscalacionScheduler — job cada 30s que escala avisos de pedidos LISTO sin entregar
   repositories/     Spring Data JPA (interfaces de acceso a datos)
   models/
     entities/       Entidades JPA mapeadas a tablas PostgreSQL
-    enums/          EstadoPedido, RolUsuario, MetodoPago, EstadoCaja
+    enums/          EstadoPedido, EstadoItem, RolUsuario, MetodoPago, EstadoCaja,
+                    EstadoDisponibilidad, EstadoEmision, EstadoSuscripcion,
+                    TipoDocumentoVenta, Modulo
   dto/
-    request/        DTOs de entrada (validados con @Valid)
+    request/        DTOs de entrada (validados con @Valid donde aplica)
     response/       DTOs de salida (proyecciones de datos)
+    ai/             DTOs para integración Dialogflow — actualmente clases vacías (stub)
   security/         JWT filter, UserDetails, JwtProvider
-  config/           SseEmitterManager, OpenApiConfig
-  exceptions/       RecursoNoEncontradoException (mapea a HTTP 404)
+  config/           SseEmitterManager, OpenApiConfig, CorsConfig, SecurityConfig, TenantInterceptor
+  exceptions/       RecursoNoEncontradoException, ReglaNegocioException,
+                    StockInsuficienteException, ModuloNoHabilitadoException,
+                    SuscripcionVencidaException + GlobalExceptionHandler
 
 3.2 MULTI-TENANCY
 ──────────────────
-  Todas las entidades del dominio extienden BaseTenantEntity, que contiene:
+  Todas las entidades operacionales extienden BaseTenantEntity, que contiene:
     - id (Long, PK auto-increment)
     - empresaId (Long, @TenantId — Hibernate inyecta filtro WHERE automático)
-    - createdAt / updatedAt (LocalDateTime, auto-gestionados)
+    - createdAt / updatedAt (LocalDateTime, auto-gestionados vía @PrePersist/@PreUpdate)
+
+  Excepciones que NO extienden BaseTenantEntity (viven a nivel de plataforma, no de tenant):
+  Empresa, Suscripcion, Plan, PlanModulo.
 
   El JWT incluye el claim "empresaId". Al autenticarse, JwtRequestFilter
   extrae ese claim y lo guarda en TenantContext (ThreadLocal). Hibernate lo usa
-  automáticamente para filtrar todas las queries por empresa.
+  automáticamente para filtrar todas las queries por empresa. El filtro limpia
+  TenantContext en un bloque finally para evitar fugas entre requests del pool de Tomcat.
 
-  Resultado: una query SELECT * FROM pedidos se convierte automáticamente en
-  SELECT * FROM pedidos WHERE empresa_id = ? sin código adicional.
-
-3.3 AUTENTICACIÓN Y AUTORIZACIÓN
-──────────────────────────────────
+3.3 AUTENTICACIÓN, AUTORIZACIÓN Y ENTITLEMENTS (Módulo 0)
+────────────────────────────────────────────────────────────
   Flujo de login:
     POST /api/auth/login  →  { correo, password }
-    Response: { token, correo, rol, empresaId }
+    Response (AuthResponseDTO): { token, correo, rol, empresaId,
+                                  modulosHabilitados: string[], estadoSuscripcion }
 
-  El token JWT contiene: sub (correo), empresaId, rol, iat, exp
+  El token JWT contiene: sub (correo), rol, empresaId, usuarioId, iat, exp.
+  El rol ROLE_COCINA recibe un token de larga duración (30 días por defecto) para no
+  interrumpir el servicio de la tablet/kiosco de cocina; el resto usa la expiración estándar (24h).
 
-  JwtRequestFilter:
-    1. Lee header "Authorization: Bearer <token>"
-    2. Fallback: lee query param "?token=<jwt>" (necesario para EventSource/SSE)
-    3. Valida token, carga UserDetails, establece SecurityContext
-    4. Extrae empresaId → TenantContext
-
-  Roles y permisos:
+  Roles (RolUsuario):
     ROLE_SUPER_ADMIN — acceso completo, gestión de empresas y usuarios
     ROLE_GERENTE     — gestión operativa, reportes, sin crear empresas
     ROLE_CAJERO      — caja, cobro de pedidos, historial
     ROLE_MOZO        — crear/confirmar pedidos, entregar
     ROLE_COCINA      — solo KDS (ver y actualizar estados de preparación)
 
+  Entitlements por plan (Módulo 0 — implementado):
+    - Empresa → Suscripcion (ACTIVA | SUSPENDIDA | VENCIDA) → Plan → lista de PlanModulo.
+    - Enum Modulo: PEDIDOS, CAJA, INVENTARIO, KDS (core=true) y REPORTES_AVANZADOS,
+      FACTURACION, RESERVAS, FIDELIZACION (core=false, premium).
+    - @RequiereModulo(Modulo.X) en un endpoint dispara ModuloInterceptor, que revisa
+      la suscripción vigente del tenant (vía TenantContext) independientemente de @PreAuthorize.
+    - Suscripción VENCIDA: los módulos core quedan en solo lectura (GET/HEAD permitidos,
+      escritura lanza SuscripcionVencidaException); los módulos premium quedan bloqueados
+      (ModuloNoHabilitadoException) sin importar el método HTTP.
+    - Sin suscripción o SUSPENDIDA: cualquier endpoint anotado lanza ModuloNoHabilitadoException.
+    - El login ya devuelve modulosHabilitados y estadoSuscripcion para que el frontend
+      oculte/deshabilite UI — pero el frontend actual (LRDS_Front) todavía no consume estos
+      dos campos en ninguna pantalla.
+
 3.4 TIEMPO REAL (SSE)
 ──────────────────────
   SseEmitterManager (@Component, singleton):
-    - Mantiene lista CopyOnWriteArrayList<SseEmitter> (thread-safe)
-    - suscribir(): crea un emitter, registra limpieza en completion/timeout/error
-    - publicar(evento, datos): broadcast a todos los emitters activos
+    - Indexado en dos niveles: ConcurrentHashMap<empresaId, ConcurrentHashMap<usuarioId, sesión>>.
+      Cada sesión guarda el rol del usuario y una CopyOnWriteArrayList<SseEmitter> (multi-tab).
+    - publicarTenant(empresaId, evento, datos)          → broadcast a todo el tenant
+    - publicarUsuario(empresaId, usuarioId, evento, datos) → a un usuario específico
+    - publicarPorRol(empresaId, rol, evento, datos)      → a todos los de un rol en el tenant
+    - Limpieza atómica de emitters/sesiones muertas en onCompletion/onTimeout/onError.
 
   Eventos publicados:
-    "NUEVO_PEDIDO"    — cuando mozo confirma pedido (BORRADOR → RECIBIDO)
-                        payload: { pedidoId, mesa, estado: "RECIBIDO" }
-    "EN_PREPARACION"  — cuando cocina inicia preparación
-                        payload: { pedidoId, mesa, estado: "EN_PREPARACION" }
-    "PEDIDO_LISTO"    — cuando cocina marca pedido listo
-                        payload: { pedidoId, mesa, estado: "LISTO" }
+    "NUEVO_PEDIDO"              — mozo confirma pedido (BORRADOR → RECIBIDO)
+    "EN_PREPARACION"            — cocina inicia preparación
+    "PEDIDO_LISTO"              — cocina marca pedido listo (al mozo + rol COCINA)
+    "NUEVA_COMANDA"             — Módulo 4: se agregan ítems a un pedido ya confirmado
+    "PEDIDO_REQUIERE_REVISION"  — al rol GERENTE: stock insuficiente detectado en preparación
+    "PRODUCTO_AGOTADO"          — Módulo 6: producto marcado AGOTADO_TEMPORAL/SERVICIO
+    "PRODUCTO_DISPONIBLE"       — Módulo 6: producto revertido a DISPONIBLE
+    "RESET_DISPONIBILIDAD"      — Módulo 6: reseteo masivo de AGOTADO_SERVICIO al cerrar caja
+    "AVISO_PEDIDO_LISTO"        — escalación server-side (EscalacionScheduler, cada 30s):
+                                   t≥1min → todos los MOZO del tenant
+                                   t≥2min → todos los CAJERO del tenant
+                                   t≥5min → GERENTE y SUPER_ADMIN del tenant
 
-  Endpoint SSE: GET /api/kds/eventos  (acepta ?token= para EventSource)
+  Endpoint SSE: GET /api/kds/eventos (acepta ?token= para EventSource, que no soporta headers).
+  El empresaId/usuarioId/rol del emitter provienen SIEMPRE del JWT validado, nunca de un
+  parámetro del request (invariante de seguridad documentado en el propio código).
 
-  Frontend:
-    KdsPage  escucha "NUEVO_PEDIDO" → recarga lista de pendientes
-    MozoPage escucha "PEDIDO_LISTO" y "EN_PREPARACION" → actualiza tarjetas
+  Nota: /api/pedidos/{id}/notificacion/ack existe pero es un endpoint informacional (ACK)
+  que no detiene la cascada de escalación — la escalación corre por tiempo del lado del
+  servidor independientemente de si el mozo confirmó haber visto el aviso.
 
-3.5 ESTRUCTURA FRONTEND
-─────────────────────────
-  frontend/src/
+3.5 ESTRUCTURA FRONTEND (repositorio LRDS_Front, separado de LRDScore)
+─────────────────────────────────────────────────────────────────────
+  src/
     api/
-      client.ts     — Axios con baseURL /api, interceptor JWT, redirect 401
+      client.ts     — Axios, baseURL http://localhost:8080/api, interceptor JWT, redirect a
+                      /login en 401/403
       auth.ts       — POST /auth/login
       pedidos.ts    — CRUD pedidos, confirmar, entregar, cancelar
       kds.ts        — pendientes KDS, marcarPreparando, marcarListo
@@ -160,15 +210,13 @@ INFRAESTRUCTURA / CONFIGURACIÓN
       authStore.ts  — Zustand: token, user, setAuth, logout, isAuthenticated
                       Persiste token en localStorage
     types/
-      index.ts      — Interfaces compartidas (AuthResponse, PedidoActivo, etc.)
+      index.ts, auth.ts — Interfaces compartidas (AuthResponse ya incluye
+                          modulosHabilitados/estadoSuscripcion, pero nada los consume aún)
     components/
       PrivateRoute.tsx — Guarda de ruta: verifica auth + rol, redirige al home correcto
     pages/
-      LoginPage.tsx    — Formulario login, redirige por rol tras autenticar
-      MozoPage.tsx     — Pantalla del mozo: crear pedidos, gestionar activos
-      KdsPage.tsx      — Kitchen Display System: cocina ve y gestiona pedidos
-      DashboardPage.tsx — Gerente: KPIs, gráfico barras SVG, alertas stock
-      CajeroPage.tsx   — Cajero: apertura/cierre caja, cobro multi-método
+      LoginPage.tsx, MozoPage.tsx, KdsPage.tsx, DashboardPage.tsx, CajeroPage.tsx
+      (mismas 5 pantallas que en el MVP original — nada nuevo para Módulos 4/6/7)
 
   Redirección por rol tras login:
     ROLE_COCINA      → /kds
@@ -177,440 +225,461 @@ INFRAESTRUCTURA / CONFIGURACIÓN
     ROLE_CAJERO      → /cajero
     ROLE_MOZO        → /mozo
 
+  GAP IMPORTANTE: el backend expone endpoints para agregar ítems a un pedido activo,
+  cancelar un ítem individual, crear/pagar documentos de cobro (split de cuentas),
+  marcar productos agotados (temporal/servicio), consultar porciones disponibles por
+  receta, emitir/anular comprobantes de venta (NOTA_VENTA/BOLETA/FACTURA) y ver el
+  margen de ventas — pero NINGUNA pantalla del frontend actual llama a esos endpoints.
+  Es funcionalidad de backend "headless" en este momento.
+
 
 ────────────────────────────────────────────────────────────────────────────────
 4. MODELO DE DATOS (Entidades)
 ────────────────────────────────────────────────────────────────────────────────
 
-EMPRESA (tabla: empresas)
-  id               BIGSERIAL PK
-  nombre_comercial VARCHAR(100) NOT NULL
-  ruc              VARCHAR(11)
-  direccion        VARCHAR(255)
-  estado_registro  BOOLEAN DEFAULT true
+EMPRESA (tabla: empresas) — NO extiende BaseTenantEntity
+  id, nombre_comercial, ruc, direccion, estado_registro
+  suscripcion_vigente_id  FK → suscripciones (opcional, referencia a la suscripción activa)
   created_at / updated_at
 
+PLAN (tabla: planes) — NO extiende BaseTenantEntity (catálogo de la plataforma)
+  id, nombre, precio_mensual, estado_registro
+  modulos: OneToMany → PlanModulo (EAGER, el interceptor los necesita en cada request)
+
+PLAN_MODULO (tabla: plan_modulos)
+  id, plan_id, codigo_modulo (enum Modulo) — unique (plan_id, codigo_modulo)
+
+SUSCRIPCION (tabla: suscripciones) — NO extiende BaseTenantEntity
+  id, empresa_id (FK), plan_id (FK, EAGER), estado (ACTIVA|SUSPENDIDA|VENCIDA),
+  fecha_inicio, fecha_fin, created_at/updated_at
+
 USUARIO (tabla: usuarios) — extends BaseTenantEntity
-  id, empresa_id (tenant)
-  nombre           VARCHAR(100)
-  correo           VARCHAR(100) UNIQUE por empresa
-  password_hash    VARCHAR(255) — BCrypt
-  rol              VARCHAR(50)  — valores del enum RolUsuario
-  estado_registro  BOOLEAN      — soft delete
+  nombre, correo (único por empresa), password_hash (BCrypt, @JsonIgnoreProperties),
+  rol (RolUsuario como String), estado_registro (soft delete)
 
 CLIENTE (tabla: clientes) — extends BaseTenantEntity
-  id, empresa_id
-  nombre_razon_social VARCHAR(150)
-  tipo_documento  VARCHAR(20)  — DNI, RUC, CE, etc.
-  numero_documento VARCHAR(20)
-  direccion, correo, telefono
+  nombre_razon_social, tipo_documento (DNI/RUC/CE), numero_documento, direccion,
+  correo, telefono
 
 CATEGORIA (tabla: categorias) — extends BaseTenantEntity
-  id, empresa_id
   nombre
 
 PRODUCTO (tabla: productos) — extends BaseTenantEntity
-  id, empresa_id
-  categoria_id     FK → categorias
-  nombre           VARCHAR(100)
-  nombre_base      VARCHAR(100)  — para variantes (ej: "Lomo" → variante "GRANDE")
-  descripcion      TEXT
-  precio_venta     DECIMAL(10,2)
-  es_preparado     BOOLEAN       — si va a cocina o no
-  variante         VARCHAR(20) DEFAULT 'UNICO'
-  tiempo_preparacion_minutos INT DEFAULT 5
-  tags_busqueda    TEXT          — para búsqueda libre
-  imagen_url       TEXT
-  estado_registro  BOOLEAN       — soft delete
+  categoria_id (FK), nombre, nombre_base (para variantes), descripcion, precio_venta,
+  es_preparado (bool: ¿va a cocina?), variante (default 'UNICO'),
+  tiempo_preparacion_minutos (default 5), tags_busqueda, imagen_url,
+  costo_referencial (para productos sin receta técnica — Módulo 5),
+  estado_disponibilidad (enum EstadoDisponibilidad: DISPONIBLE | AGOTADO_TEMPORAL |
+    AGOTADO_SERVICIO — Módulo 6), estado_registro (soft delete)
 
 INSUMO (tabla: insumos) — extends BaseTenantEntity
-  id, empresa_id
-  nombre           VARCHAR(100)
-  unidad_medida    VARCHAR(20)  — KG, LT, UND, etc.
-  stock_actual     DECIMAL(10,3)
-  stock_minimo     DECIMAL(10,3) — umbral de alerta
-  costo_unitario   DECIMAL(10,4) — para costo promedio ponderado
-  estado_registro  BOOLEAN
+  nombre, unidad_medida, stock_actual, stock_minimo, costo_unitario (promedio ponderado,
+  2 decimales en la práctica), stock_reservado (Módulo 3 — separa compromiso comercial
+  de stock físico), estado_registro
+  Método derivado: getStockDisponible() = stock_actual − stock_reservado
 
 RECETA_DETALLE (tabla: receta_detalles) — extends BaseTenantEntity
-  id, empresa_id
-  producto_id      FK → productos
-  insumo_id        FK → insumos
-  cantidad_requerida DECIMAL(10,4)
-  unidad_medida    VARCHAR(20)
-  estado_registro  BOOLEAN
+  producto_id (FK), insumo_id (FK), cantidad_requerida, unidad_medida, estado_registro
 
 PEDIDO (tabla: pedidos) — extends BaseTenantEntity
-  id, empresa_id
-  mozo_id          FK → usuarios
-  cliente_id       FK → clientes (opcional)
-  sesion_caja_id   FK → sesiones_caja (se asigna al pagar)
-  tipo_consumo     VARCHAR(50)  — MESA | PARA_LLEVAR | DELIVERY
-  identificador_mesa_referencia VARCHAR(50)  — ej: "Mesa 3"
-  estado_actual    ENUM(EstadoPedido)
-  numero_orden     INT          — número secuencial diario
-  subtotal         DECIMAL(10,2)
-  descuento        DECIMAL(10,2) DEFAULT 0
-  total            DECIMAL(10,2)
-  notas_generales  TEXT
-  estado_registro  BOOLEAN
+  mozo_id (FK), cliente_id (FK, opcional), sesion_caja_id (FK, se asigna al pagar),
+  tipo_consumo (MESA|PARA_LLEVAR|DELIVERY), identificador_mesa_referencia,
+  estado_actual (enum EstadoPedido — estado AGREGADO, se recalcula a partir de los
+    estados de sus PedidoDetalle), numero_orden (= id del pedido, evita colisiones),
+  subtotal, descuento, total (BigDecimal), notas_generales,
+  requiere_revision (bool — Módulo 3/6: se activa si el stock físico no alcanzó al
+    momento de preparar, avisa al GERENTE), estado_registro
 
 PEDIDO_DETALLE (tabla: pedidos_detalle) — extends BaseTenantEntity
-  id, empresa_id
-  pedido_id        FK → pedidos
-  producto_id      FK → productos
-  cantidad         INT
-  precio_unitario  DECIMAL(10,2)
-  subtotal         DECIMAL(10,2)
-  notas_preparacion TEXT         — ej: "Sin cebolla"
+  pedido_id (FK), producto_id (FK), cantidad, precio_unitario, subtotal,
+  notas_preparacion, estado_item (enum EstadoItem: PENDIENTE|EN_PREPARACION|LISTO|
+    ENTREGADO|CANCELADO — ciclo de vida INDEPENDIENTE del pedido, permite entregas
+    parciales), numero_comanda (Módulo 4 — identifica en qué "viaje" se pidió el ítem),
+  motivo_cancelacion (auditoría Módulo 4), costo_unitario_consumido (Módulo 5 — snapshot
+    del costo promedio ponderado al momento de EN_PREPARACION, jamás se recalcula)
 
 SESION_CAJA (tabla: sesiones_caja) — extends BaseTenantEntity
-  id, empresa_id
-  cajero_id        FK → usuarios
-  fecha_apertura   TIMESTAMP
-  fecha_cierre     TIMESTAMP
-  monto_inicial    DECIMAL(10,2)
-  monto_final_calculado  DECIMAL(10,2)  — calculado por sistema
-  monto_final_declarado  DECIMAL(10,2)  — ingresado por cajero al cerrar
-  diferencia       DECIMAL(10,2) GENERATED — (declarado - calculado)
-  estado           ENUM(EstadoCaja)     — ABIERTA | CERRADA
+  cajero_id (FK), fecha_apertura, fecha_cierre, monto_inicial,
+  monto_final_calculado (calculado por sistema = inicial + pagos EFECTIVO de la sesión),
+  monto_final_declarado (ingresado por cajero), diferencia (columna GENERATED en
+  PostgreSQL: declarado − calculado; Hibernate la marca insertable=false/updatable=false),
+  estado (ABIERTA|CERRADA)
 
 TRANSACCION_PAGO (tabla: transacciones_pago) — extends BaseTenantEntity
-  id, empresa_id
-  pedido_id        FK → pedidos
-  sesion_caja_id   FK → sesiones_caja
-  metodo_pago      ENUM(MetodoPago)  — EFECTIVO | TARJETA | YAPE | PLIN | TRANSFERENCIA
-  monto            DECIMAL(10,2)
-  estado_pago      VARCHAR(50) DEFAULT 'COMPLETADO'
-  titular_tarjeta  VARCHAR(100)
-  ultimos_digitos_tarjeta VARCHAR(4)
-  numero_yape      VARCHAR(20)
-  referencia_pasarela VARCHAR(255)
+  pedido_id (FK), sesion_caja_id (FK), metodo_pago (EFECTIVO|TARJETA|YAPE|PLIN|
+  TRANSFERENCIA), monto, estado_pago (default 'COMPLETADO'), titular_tarjeta,
+  ultimos_digitos_tarjeta, numero_yape, referencia_pasarela (preparado para
+  integración futura con pasarela real — aún sin implementar)
 
 KARDEX_MOVIMIENTO (tabla: kardex_movimientos) — extends BaseTenantEntity
-  id, empresa_id
-  insumo_id        FK → insumos
-  tipo_movimiento  VARCHAR(30)  — ENTRADA | MERMA | AJUSTE | CONSUMO_PRODUCCION
-  cantidad         DECIMAL(10,4)
-  stock_anterior   DECIMAL(10,4)
-  stock_posterior  DECIMAL(10,4)
-  costo_unitario   DECIMAL(10,4)  — para promedio ponderado
-  pedido_id        BIGINT         — si es por producción
-  usuario_id       FK → usuarios  — quién hizo el movimiento
-  observacion      TEXT
+  insumo_id (FK), tipo_movimiento (ENTRADA_COMPRA|SALIDA_MERMA|ENTRADA_AJUSTE|
+  SALIDA_AJUSTE|RESERVA|LIBERACION_RESERVA|CONSUMO_PRODUCCION — String, no enum),
+  cantidad, stock_anterior, stock_posterior, costo_unitario, pedido_id (Long simple,
+  no FK real), usuario_id (FK, quién ejecutó el movimiento manual), observacion
 
-VISTAS (Views de PostgreSQL)
-  vw_kds_cocina — consulta optimizada para el KDS, incluye minutosTranscurridos
-  vw_dashboard_ventas — agregación de ventas para el reporte
+DOCUMENTO_COBRO (tabla: documentos_cobro) — extends BaseTenantEntity — Módulo 4 (split)
+  pedido_id (FK), tipo ("ITEMS"|"MONTO"), monto (solo tipo MONTO), subtotal, total,
+  estado ("PENDIENTE"|"PAGADO"), detalles: ManyToMany → PedidoDetalle (solo si tipo=ITEMS)
+
+DOCUMENTO_VENTA (tabla: documentos_venta) — extends BaseTenantEntity — Módulo 7
+  pedido_id (FK, opcional), documento_cobro_id (FK, opcional — exactamente uno de los
+  dos debe estar presente), tipo (enum TipoDocumentoVenta: NOTA_VENTA|BOLETA|FACTURA),
+  serie (NV01/B001/F001), correlativo (atómico, sin huecos — ver sección 12),
+  tipo_documento_receptor, numero_documento_receptor, razon_social_receptor,
+  subtotal, igv (18% IGV peruano, solo BOLETA/FACTURA), total,
+  estado_emision (enum EstadoEmision: EMITIDO|ANULADO|ENVIADO_SUNAT|ACEPTADO|RECHAZADO —
+    los 3 últimos preparados para integración SUNAT/OSE futura, sin uso real aún),
+  fecha_emision, motivo_anulacion, documento_referencia_id (auto-FK, para futuras
+  notas de crédito)
+
+AUDITORIA_LOG (tabla: auditoria_logs) — extends BaseTenantEntity
+  usuario_id (FK), modulo (String libre, ej. "CAJA"), accion, detalle.
+  IAuditoriaService.registrarAccion() existe y usa @Transactional(REQUIRES_NEW) para
+  que el log sobreviva aunque la transacción de negocio haga rollback — PERO no está
+  invocado desde ningún controller ni service todavía: es infraestructura lista, sin cablear.
+
+VISTAS (Views de PostgreSQL, mapeadas como entidades @Immutable)
+  vw_kds_cocina    (VwKdsCocina)     — fila por ítem pendiente/en preparación para el KDS,
+                                       incluye minutosTranscurridos calculado en SQL
+  vw_dashboard_ventas (VwDashboardVentas) — agregación diaria de ventas para el dashboard
 
 
 ────────────────────────────────────────────────────────────────────────────────
 5. FLUJO DE NEGOCIO PRINCIPAL
 ────────────────────────────────────────────────────────────────────────────────
 
-5.1 CICLO DE VIDA DE UN PEDIDO
-───────────────────────────────
+5.1 CICLO DE VIDA DE UN PEDIDO (estado agregado + estado por ítem)
+────────────────────────────────────────────────────────────────────
+  El pedido tiene un estado_actual "agregado" que PedidoServiceImpl/KdsServiceImpl
+  recalculan a partir de los EstadoItem de sus PedidoDetalle activos (no cancelados):
+    - todos EN_PREPARACION (alguno) → EN_PREPARACION
+    - si no, alguno PENDIENTE       → RECIBIDO
+    - si no, alguno LISTO           → LISTO
+    - si no (todos ENTREGADO)       → ENTREGADO
+    - si todos CANCELADO            → CANCELADO
+
   [MOZO]
-    1. Crea pedido con productos y cantidades → estado: BORRADOR
-       POST /api/pedidos
-    2. Cuando está completo, lo envía a cocina → estado: RECIBIDO
-       PUT /api/pedidos/{id}/confirmar
-       → SSE "NUEVO_PEDIDO" broadcast a todos los clientes
+    1. Crea pedido (POST /api/pedidos) → BORRADOR. Ítems en PENDIENTE, numero_comanda=1.
+       No afecta inventario. El backend fija el precio desde el catálogo (nunca confía
+       en el precio que mande el cliente).
+    2. Confirma (PUT /api/pedidos/{id}/confirmar) → RECIBIDO.
+       - Rechaza si algún producto del pedido no está DISPONIBLE (Módulo 6).
+       - Reserva insumos por receta (reservarInsumosParaPedido): SOLO incrementa
+         stock_reservado, NO toca stock_actual. Si falta stock lanza
+         StockInsuficienteException con el detalle exacto de insumos faltantes.
+       - SSE "NUEVO_PEDIDO" a todo el tenant.
 
   [COCINA — KDS]
-    3. Ve el pedido en columna "NUEVOS", lo toma → estado: EN_PREPARACION
-       PUT /api/kds/{pedidoId}/preparando
-       → SSE "EN_PREPARACION" broadcast
-    4. Termina de preparar → estado: LISTO
-       PUT /api/kds/{pedidoId}/listo
-       → SSE "PEDIDO_LISTO" broadcast
+    3. Toma la orden (PUT /api/kds/{id}/preparando) → ítems PENDIENTE pasan a EN_PREPARACION.
+       *** AQUÍ ocurre el consumo REAL de inventario *** (convertirItemsAConsumo):
+       descuenta stock_actual, libera el stock_reservado correspondiente, registra
+       KardexMovimiento CONSUMO_PRODUCCION, y congela el costo_unitario_consumido en
+       cada PedidoDetalle (snapshot para reportes de margen estables — Módulo 5).
+       Si el stock físico no alcanza pese a la reserva, marca pedido.requiereRevision=true
+       y notifica al GERENTE por SSE, en vez de fallar en silencio.
+       SSE "EN_PREPARACION" a todo el tenant.
+    4. Marca listo (PUT /api/kds/{id}/listo) → ítems EN_PREPARACION pasan a LISTO.
+       SSE "PEDIDO_LISTO" al mozo dueño del pedido + rol COCINA.
+       A partir de aquí, EscalacionScheduler empieza a contar minutos para escalar
+       el aviso si nadie entrega (ver sección 3.4).
 
   [MOZO]
-    5. Ve la tarjeta en verde "¡Listo!", lo lleva a la mesa → estado: ENTREGADO
-       PUT /api/pedidos/{id}/entregar
+    5. Entrega (PUT /api/pedidos/{id}/entregar) → exige que todos los ítems activos
+       estén LISTO o ENTREGADO; los LISTO pasan a ENTREGADO.
 
-  [CAJERO]
-    6. Ve pedido en su pantalla (ENTREGADO), abre modal de cobro
-    7. Selecciona métodos de pago (puede ser mixto, ej: S/10 Yape + S/5 Efectivo)
-       POST /api/pedidos/{id}/pagar  →  { sesionCajaId, pagos: [...] }
-    8. Sistema registra transacciones, descuenta stock de insumos (recetas),
-       acumula monto_final_calculado en sesión de caja → estado: PAGADO
+  [CAJERO] — dos vías, NO deben mezclarse en la misma mesa (ver hallazgos, sección 12)
+    6a. Pago directo (POST /api/pedidos/{id}/pagar): pedido debe estar LISTO/ENTREGADO;
+        valida que la suma de pagos (array multi-método) cubra el total; pedido → PAGADO.
+    6b. Split de cuentas — Módulo 4 (POST .../documentos-cobro y .../documentos-cobro/{id}/pagar):
+        se crean uno o más DocumentoCobro (por ÍTEMS específicos o por MONTO libre);
+        cada uno se paga independientemente; el pedido pasa a PAGADO recién cuando la
+        suma de documentos PAGADO cubre el total del pedido.
+    Nota: el descuento de inventario NO ocurre aquí — ya ocurrió en el paso 3
+    (EN_PREPARACION). El pago solo mueve dinero y cierra el ciclo del pedido.
 
   [GERENTE]
-    9. Visualiza dashboard con KPIs del período y alertas de stock
-       GET /api/reportes/dashboard?inicio=&fin=
-       GET /api/inventario/alertas
+    7. Dashboard con KPIs (GET /api/reportes/dashboard), margen de utilidad real
+       (GET /api/reportes/margen — requiere módulo REPORTES_AVANZADOS) y alertas de
+       stock bajo (GET /api/inventario/alertas).
 
-5.2 FLUJO DE INVENTARIO (automático al pagar)
-──────────────────────────────────────────────
-  Cuando un pedido se paga:
-    - Por cada producto en los detalles del pedido
-    - Si el producto tiene receta (receta_detalles)
-    - Se descuenta la cantidad de cada insumo de la receta × cantidad pedida
-    - Se registra un KardexMovimiento de tipo CONSUMO_PRODUCCION
-    - Si el stock cae por debajo de stock_minimo → aparece en alertas
+5.2 MÓDULO 4 — CICLO DE VIDA AVANZADO (comandas múltiples, cancelaciones, split)
+──────────────────────────────────────────────────────────────────────────────────
+  - Agregar ítems a un pedido ya confirmado (POST /api/pedidos/{id}/items): crea una
+    nueva "comanda" (numero_comanda incremental), reserva SOLO el inventario de los
+    ítems nuevos, y si el pedido estaba LISTO/ENTREGADO lo retrocede a RECIBIDO
+    (porque ahora tiene ítems pendientes otra vez). Dispara SSE "NUEVA_COMANDA".
+  - Cancelar un ítem específico (PUT /api/pedidos/{id}/items/{detalleId}/cancelar):
+      · Si estaba PENDIENTE           → libera la reserva de inventario.
+      · Si estaba EN_PREPARACION/LISTO → el consumo ya se registró; se asume merma
+        implícita (no se devuelve stock).
+      · Si estaba ENTREGADO           → exige rol GERENTE + motivo obligatorio (auditoría).
+  - Split de cuentas: ver paso 6b arriba. Un DocumentoCobro tipo "ITEMS" selecciona
+    PedidoDetalle específicos; tipo "MONTO" es un monto libre (ej. dividir la cuenta
+    en partes iguales sin atarlo a ítems concretos).
 
-5.3 CICLO DE CAJA
+5.3 MÓDULO 6 — DISPONIBILIDAD "DOBLE 86"
+────────────────────────────────────────────
+  - AGOTADO_TEMPORAL: cocina lo marca (PUT /api/kds/productos/{id}/agotado-temporal),
+    reversible en cualquier momento por cocina (PUT .../disponible).
+  - AGOTADO_SERVICIO: cocina lo marca (PUT .../agotado-servicio) cuando el insumo no
+    volverá hasta el día siguiente; NO se puede revertir manualmente — solo se
+    restablece automáticamente al cerrar caja (ver 5.4).
+  - Confirmar un pedido con productos no DISPONIBLE está bloqueado (ver 5.1 paso 2).
+  - GET /api/kds/productos/porciones calcula, por receta, cuántas porciones más se
+    pueden servir de cada producto (mínimo de stock_disponible / cantidad_requerida
+    entre todos sus insumos) — útil para advertir al mozo antes de que se agote.
+
+5.4 CICLO DE CAJA
 ──────────────────
-  Cajero abre caja con monto inicial (fondo de cambio)
-    POST /api/caja/abrir  →  { montoInicial }
-    → SesionCaja en estado ABIERTA
+  - Abrir (POST /api/caja/abrir): un cajero no puede tener dos sesiones ABIERTA a la vez.
+  - Durante el turno, monto_final_calculado = monto_inicial + Σ pagos EFECTIVO
+    (YAPE/TARJETA/PLIN/TRANSFERENCIA NO entran al conteo físico).
+  - Cerrar (PUT /api/caja/cerrar/{id}): recibe monto_final_declarado (conteo físico);
+    diferencia se calcula en la BD (columna GENERATED). Al cerrar, TODOS los productos
+    en AGOTADO_SERVICIO del tenant se resetean a DISPONIBLE automáticamente y se emite
+    SSE "RESET_DISPONIBILIDAD".
 
-  Durante el turno: los pagos se acumulan en monto_final_calculado
+5.5 MÓDULO 5 — COSTEO Y MARGEN (ya implementado, contradice versiones previas de este doc)
+────────────────────────────────────────────────────────────────────────────────────────────
+  GET /api/reportes/margen (requiere módulo REPORTES_AVANZADOS) calcula, para un rango
+  de fechas: ingresos efectivos (prorrateando el descuento del pedido), costo de ventas
+  (a partir de costo_unitario_consumido, NUNCA recalculado retroactivamente), utilidad
+  bruta y margen %, desglosado por producto y por categoría, más el costo de la merma
+  (ítems cancelados que ya habían consumido inventario). Los productos sin receta usan
+  costo_referencial como estimado (esEstimado=true en el desglose).
 
-  Al cerrar el turno, cajero cuenta físicamente el dinero e ingresa el total
-    PUT /api/caja/cerrar/{id}  →  { montoFinalDeclarado }
-    → diferencia = declarado - calculado (cuadre de caja)
-    → SesionCaja en estado CERRADA
+5.6 MÓDULO 7 — COMPROBANTES DE VENTA (parcial, sin integración SUNAT real)
+───────────────────────────────────────────────────────────────────────────
+  POST /api/documentos-venta emite NOTA_VENTA (sin gate, sin IGV desglosado),
+  BOLETA o FACTURA (ambas requieren módulo FACTURACION; FACTURA exige RUC de 11
+  dígitos válido). El IGV (18%) se calcula por división del total (que ya lo incluye)
+  usando el divisor 1.18. El correlativo es atómico vía INSERT ... ON CONFLICT DO
+  UPDATE sobre una tabla series_correlativo (por empresa_id + tipo), sin bloqueos de
+  aplicación. La anulación (PUT .../anular) es un cambio de estado + motivo — el
+  comprobante nunca se borra. No hay generación de XML ni envío a un OSE/SUNAT real;
+  los estados ENVIADO_SUNAT/ACEPTADO/RECHAZADO existen en el enum pero ningún flujo
+  los setea todavía.
 
 
 ────────────────────────────────────────────────────────────────────────────────
 6. API REST — RESUMEN DE ENDPOINTS
 ────────────────────────────────────────────────────────────────────────────────
 
-AUTH
-  POST  /api/auth/login           — login, devuelve JWT
+AUTH (público)
+  POST  /api/auth/login              — login, devuelve JWT + modulosHabilitados + estadoSuscripcion
 
-EMPRESAS  (SUPER_ADMIN, GERENTE)
-  GET   /api/empresas             — listar
+EMPRESAS  (SUPER_ADMIN, GERENTE — sin endpoint de creación vía API en este momento)
   GET   /api/empresas/{id}
-  POST  /api/empresas             — crear (solo SUPER_ADMIN)
-  PUT   /api/empresas/{id}        — actualizar (solo SUPER_ADMIN)
+  PUT   /api/empresas/{id}           — solo SUPER_ADMIN
 
 USUARIOS  (SUPER_ADMIN, GERENTE)
   GET   /api/usuarios
   GET   /api/usuarios/{id}
-  POST  /api/usuarios             — crear (solo SUPER_ADMIN, requiere password)
-  PUT   /api/usuarios/{id}        — actualizar datos
-  DELETE /api/usuarios/{id}       — soft delete (solo SUPER_ADMIN)
-  PUT   /api/usuarios/{id}/password         — cambio contraseña propia (requiere passwordActual)
+  POST  /api/usuarios                       — crear (solo SUPER_ADMIN)
+  PUT   /api/usuarios/{id}                  — actualizar
+  DELETE /api/usuarios/{id}                 — soft delete (solo SUPER_ADMIN)
+  PUT   /api/usuarios/{id}/password         — auto-servicio (requiere passwordActual)
   PUT   /api/usuarios/{id}/resetear-password — reset admin (solo SUPER_ADMIN)
 
 CLIENTES  (SUPER_ADMIN, GERENTE, CAJERO, MOZO)
-  GET   /api/clientes             — listar (solo GERENTE/ADMIN)
-  POST  /api/clientes             — crear
-  GET   /api/clientes/{id}
-  PUT   /api/clientes/{id}
+  POST  /api/clientes
+  GET   /api/clientes/buscar/{documento}
+  GET   /api/clientes                — solo GERENTE/ADMIN
 
-INVENTARIO — CATEGORÍAS
-  GET   /api/inventario/categorias        — todos los roles
-  POST  /api/inventario/categorias        — GERENTE, ADMIN
-
-INVENTARIO — PRODUCTOS
-  GET   /api/inventario/productos         — todos los roles
-  POST  /api/inventario/productos         — GERENTE, ADMIN
-  PUT   /api/inventario/productos/{id}
-  DELETE /api/inventario/productos/{id}   — soft delete
-
-INVENTARIO — INSUMOS
-  GET   /api/inventario/insumos           — GERENTE, ADMIN
-  POST  /api/inventario/insumos
-  PUT   /api/inventario/insumos/{id}
-  DELETE /api/inventario/insumos/{id}
-  GET   /api/inventario/alertas           — insumos con stock < stock_minimo
-
-INVENTARIO — RECETAS
-  GET   /api/inventario/recetas/{productoId}
-  POST  /api/inventario/recetas
-
-INVENTARIO — KARDEX / MOVIMIENTOS
+INVENTARIO — CATEGORÍAS / PRODUCTOS / INSUMOS / RECETAS / KARDEX
+  GET/POST  /api/inventario/categorias
+  GET/POST/PUT/DELETE /api/inventario/productos{,/{id}}
+  GET/POST/PUT/DELETE /api/inventario/insumos{,/{id}}  (oculto para MOZO/CAJERO)
+  GET   /api/inventario/alertas               — stock < stock_minimo
+  GET/POST /api/inventario/recetas{,/{productoId}}     (GET habilitado también para COCINA)
   GET   /api/inventario/kardex/{insumoId}
-  POST  /api/inventario/entradas          — entrada de almacén
-  POST  /api/inventario/mermas            — registrar merma
-  POST  /api/inventario/ajustes           — ajuste de inventario
+  POST  /api/inventario/entradas | /mermas | /ajustes
 
 PEDIDOS
-  POST  /api/pedidos                      — crear borrador
-  GET   /api/pedidos/activos              — pedidos no terminados
-  GET   /api/pedidos/historial?inicio=&fin= — PAGADO/CANCELADO por período
+  POST  /api/pedidos                          — crear borrador
+  PUT   /api/pedidos/{id}/confirmar           — BORRADOR → RECIBIDO + reserva + SSE
+  PUT   /api/pedidos/{id}/entregar            — → ENTREGADO
+  POST  /api/pedidos/{id}/pagar               — pago directo multi-método
   GET   /api/pedidos/{id}
-  PUT   /api/pedidos/{id}/confirmar       — BORRADOR → RECIBIDO + SSE
-  PUT   /api/pedidos/{id}/entregar        — LISTO → ENTREGADO
-  POST  /api/pedidos/{id}/pagar           — procesar cobro multi-método
-  PUT   /api/pedidos/{id}/descuento?monto= — aplicar descuento (GERENTE)
-  PUT   /api/pedidos/{id}/cancelar        — cancelar (GERENTE)
-  GET   /api/pedidos/{id}/ticket          — ticket térmico en texto plano
+  GET   /api/pedidos/activos                  — no terminados (incluye ROLE_COCINA)
+  GET   /api/pedidos/historial?inicio=&fin=   — PAGADO/CANCELADO por período
+  PUT   /api/pedidos/{id}/descuento?monto=    — GERENTE
+  PUT   /api/pedidos/{id}/cancelar            — GERENTE
+  POST  /api/pedidos/{id}/notificacion/ack    — ACK informacional (no detiene escalación)
+  GET   /api/pedidos/{id}/ticket              — ticket térmico en texto plano
+  -- Módulo 4 --
+  POST  /api/pedidos/{id}/items                        — agregar ítems (nueva comanda)
+  PUT   /api/pedidos/{id}/items/{detalleId}/cancelar    — cancelar ítem individual
+  POST  /api/pedidos/{id}/documentos-cobro              — crear split (ITEMS|MONTO)
+  GET   /api/pedidos/{id}/documentos-cobro              — listar splits del pedido
+  POST  /api/pedidos/documentos-cobro/{docId}/pagar     — pagar un split
 
 KDS (Kitchen Display System)
-  GET   /api/kds/pendientes               — pedidos RECIBIDO + EN_PREPARACION
-  PUT   /api/kds/{pedidoId}/preparando    — → EN_PREPARACION + SSE
-  PUT   /api/kds/{pedidoId}/listo         — → LISTO + SSE
-  GET   /api/kds/eventos                  — SSE stream (acepta ?token=)
+  GET   /api/kds/pendientes                             — vista vw_kds_cocina
+  PUT   /api/kds/{id}/preparando                        — → EN_PREPARACION + consumo real
+  PUT   /api/kds/{id}/listo                             — → LISTO + SSE al mozo
+  GET   /api/kds/eventos                                — SSE stream (acepta ?token=)
+  -- Módulo 6 --
+  PUT   /api/kds/productos/{id}/agotado-temporal
+  PUT   /api/kds/productos/{id}/agotado-servicio
+  PUT   /api/kds/productos/{id}/disponible              — revierte solo AGOTADO_TEMPORAL
+  GET   /api/kds/productos/porciones                    — porciones disponibles por receta
 
-CAJA
-  POST  /api/caja/abrir                   — nueva sesión con monto inicial
-  PUT   /api/caja/cerrar/{id}             — cerrar con monto declarado
-  GET   /api/caja/activa                  — sesión abierta del cajero actual
-  GET   /api/caja/historial               — todas las sesiones del cajero
+CAJA  (SUPER_ADMIN, GERENTE, CAJERO)
+  POST  /api/caja/abrir
+  PUT   /api/caja/cerrar/{id}                — resetea AGOTADO_SERVICIO al cerrar
+  GET   /api/caja/activa
+  GET   /api/caja/historial
+
+DOCUMENTOS DE VENTA — Módulo 7 (SUPER_ADMIN, GERENTE, CAJERO; anular solo ADMIN/GERENTE)
+  POST  /api/documentos-venta                             — emitir NOTA_VENTA/BOLETA/FACTURA
+  GET   /api/documentos-venta/{id}
+  GET   /api/documentos-venta/por-pedido/{pedidoId}
+  GET   /api/documentos-venta/por-documento-cobro/{documentoCobroId}
+  PUT   /api/documentos-venta/{id}/anular
 
 REPORTES  (SUPER_ADMIN, GERENTE)
   GET   /api/reportes/dashboard?inicio=&fin=  — KPIs + detalle diario JSON
+  GET   /api/reportes/margen?inicio=&fin=     — requiere módulo REPORTES_AVANZADOS
   GET   /api/reportes/excel?inicio=&fin=      — exportar .xlsx
 
-AI (deshabilitado por defecto)
-  /api/ai/*  — controlador condicional, activa con ai.module.enabled=true
+AI (deshabilitado por defecto, sin lógica implementada)
+  /api/ai/*  — AiIntegrationController condicional (ai.module.enabled=true), clase vacía.
+  DTOs DialogflowRequestDTO/ResponseDTO también vacíos (solo scaffolding).
 
 
 ────────────────────────────────────────────────────────────────────────────────
-7. PANTALLAS DEL FRONTEND
+7. PANTALLAS DEL FRONTEND (repositorio LRDS_Front)
 ────────────────────────────────────────────────────────────────────────────────
+
+Estas 5 pantallas cubren el flujo original del MVP. NO se ha construido UI para
+Módulo 4 (agregar ítems, cancelar ítem, split de cuentas), Módulo 6 (marcar
+agotado temporal/servicio, ver porciones disponibles), Módulo 7 (emitir/anular
+comprobantes) ni el dashboard de margen (Módulo 5) — todo eso solo es accesible
+hoy vía API directa (Postman/curl) o esperando implementación de frontend.
 
 7.1 LOGIN (/login)
-  - Fondo con gradiente naranja (identidad visual)
-  - Formulario: correo + contraseña
-  - Redirige automáticamente al área del rol tras autenticarse
-  - Muestra error si credenciales inválidas
+  - Formulario correo + contraseña, redirige por rol tras autenticarse.
 
-7.2 MOZO (/mozo)  — roles: MOZO, CAJERO, GERENTE, ADMIN
-  Panel izquierdo:
-    - Selector tipo de consumo: MESA | PARA_LLEVAR | DELIVERY
-    - Campo número de mesa (aparece solo si es MESA)
-    - Buscador de productos en tiempo real
-    - Lista de productos con precio, click para agregar al carrito
-    - Carrito: +/- por ítem, total calculado, notas generales
-    - Botón "Crear pedido en borrador"
-  Panel derecho:
-    - Grid de tarjetas de pedidos activos
-    - Cada tarjeta: número, mesa, estado badge colorido, ítems, total
-    - Botón "Enviar a cocina" si está en BORRADOR
-    - Botón "Entregar ✓" si está en LISTO
-    - SSE: se actualiza automáticamente cuando cocina cambia estado
+7.2 MOZO (/mozo) — roles: MOZO, CAJERO, GERENTE, ADMIN
+  - Selector tipo de consumo, carrito, lista de pedidos activos con SSE.
+  - Solo permite crear pedido y confirmar/entregar — no agrega ítems a uno ya
+    confirmado ni cancela ítems individuales desde la UI.
 
-7.3 KDS — COCINA (/kds)  — roles: COCINA, GERENTE, ADMIN
-  Tema oscuro (bg-gray-900)
-  Columna izquierda "NUEVOS":
-    - Tarjetas azules de pedidos RECIBIDO
-    - Muestra número de orden, mesa/tipo, lista de ítems con cantidad y notas
-    - Botón naranja "▶ Iniciar preparación"
-  Columna derecha "EN PREPARACIÓN":
-    - Tarjetas amarillas de pedidos EN_PREPARACION
-    - Botón verde "Marcar como LISTO"
-  Indicador conexión SSE (Wifi / WifiOff)
-  Sin botón de logout visible siempre (pero hay logout en header)
+7.3 KDS — COCINA (/kds) — roles: COCINA, GERENTE, ADMIN
+  - Columnas "Nuevos" / "En preparación", SSE para actualizar en vivo.
+  - Sin botones de agotado-temporal/servicio ni de porciones disponibles todavía.
 
-7.4 DASHBOARD (/dashboard)  — roles: GERENTE, ADMIN
-  Filtro de fechas inicio/fin con botón Actualizar
-  Botón Exportar Excel (descarga directo al navegador)
-  2 cards KPI:
-    - Ingresos totales del período (S/)
-    - Pedidos pagados del período (cantidad)
-  Gráfico de barras SVG diario (sin librerías externas)
-    - Eje Y: ingresos (S/)
-    - Eje X: fecha (MM-DD)
-    - Escala automática según máximo del período
-  Tabla de alertas de stock bajo:
-    - Insumo, stock actual, stock mínimo, unidad, badge BAJO / SIN STOCK
+7.4 DASHBOARD (/dashboard) — roles: GERENTE, ADMIN
+  - KPIs de ingresos/pedidos, gráfico SVG, alertas de stock bajo.
+  - Sin vista de margen de utilidad (Módulo 5) todavía.
 
-7.5 CAJERO (/cajero)  — roles: CAJERO, GERENTE, ADMIN
-  Panel de caja:
-    Si no hay caja abierta:
-      - Formulario apertura con monto inicial
-      - Si acaba de cerrar, muestra diferencia de la sesión anterior
-    Si hay caja abierta:
-      - Muestra hora de apertura y monto inicial
-      - Formulario de cierre con monto físico contado
-  Grid de pedidos ENTREGADO (pendientes de cobro):
-    - Tarjeta con borde morado, ítems, total
-    - Botón "Cobrar" → abre modal
-  Modal de cobro:
-    - Resumen de ítems y total del pedido
-    - Hasta 3 métodos de pago simultáneos
-    - Métodos: EFECTIVO (💵), YAPE (💜), PLIN (💚), TARJETA (💳)
-    - Monto por método editable
-    - Cálculo de vuelto en tiempo real
-    - Bloquea confirmación si el monto no cubre el total
-    - Tras éxito: muestra checkmark, enlace a ticket térmico
+7.5 CAJERO (/cajero) — roles: CAJERO, GERENTE, ADMIN
+  - Apertura/cierre de caja, cobro multi-método vía el endpoint de pago directo.
+  - Sin UI para split de cuentas (documentos-cobro) ni emisión de comprobantes.
 
 
 ────────────────────────────────────────────────────────────────────────────────
 8. SEGURIDAD
 ────────────────────────────────────────────────────────────────────────────────
 
-- Contraseñas hasheadas con BCrypt (no se almacena texto plano)
-- JWT firmado con HMAC-SHA256, claim empresaId incluido
-- @JsonIgnoreProperties({"passwordHash"}) en entidad Usuario — nunca serializa el hash
-- @PreAuthorize en cada endpoint con lista explícita de roles permitidos
-- TenantContext como ThreadLocal — limpiado en finally block del filtro
-- Fallback ?token= para SSE limitado solo cuando no hay header Authorization
-- Separación de endpoints de contraseña: self-service vs admin-reset
+- Contraseñas hasheadas con BCrypt (mínimo 8 caracteres, validado en backend).
+- JWT firmado HMAC-SHA256; claims sub/rol/empresaId/usuarioId/iat/exp.
+- Token de 24h estándar, 30 días para ROLE_COCINA (cuenta kiosco).
+- @JsonIgnoreProperties({"passwordHash"}) en Usuario — nunca serializa el hash.
+- @PreAuthorize por endpoint + ModuloInterceptor por entitlements (dos capas
+  independientes: pasar una no implica pasar la otra).
+- TenantContext como ThreadLocal, limpiado en finally del JwtRequestFilter.
+- Fallback ?token= para SSE, solo cuando no hay header Authorization.
+- Cambio de contraseña self-service exige la contraseña actual; el reset admin no.
+- CORS: orígenes localhost/127.0.0.1 en cualquier puerto + dominio de Vercel de
+  producción, credentials habilitado.
 
-Vulnerabilidades conocidas y pendientes de producción:
-  - JWT_SECRET tiene valor por defecto inseguro (cambiar antes de producción)
-  - No implementado refresh token (expiración fija 24h)
-  - No implementado rate limiting en /api/auth/login
-  - No implementado HTTPS (debe configurarse en nginx/reverse proxy)
+Cosas pendientes SOLO relevantes para producción (no bloquean el desarrollo local):
+  - JWT_SECRET tiene valor por defecto hardcodeado en application.properties.
+  - No hay refresh token (expiración fija).
+  - No hay rate limiting en /api/auth/login.
+  - No hay HTTPS configurado (se asumiría un reverse proxy en producción).
+
+Hallazgos de correctness (sí relevantes en cualquier entorno, incluido local):
+  - No existe ningún @Lock/@Version en el proyecto: el descuento de inventario
+    (convertirItemsAConsumo) y el cierre de split de cuentas (pagarDocumentoCobro,
+    que suma documentos PAGADO y compara contra el total) son "leer, calcular,
+    guardar" sin bloqueo — con dos requests concurrentes podría haber una
+    condición de carrera. No se ha priorizado porque el volumen de uso actual
+    (desarrollo/pruebas) no lo dispara, pero es una tarea pendiente real.
+  - El intento de eliminar un ítem cancelado ya está scopeado correctamente al
+    pedido (busca dentro de pedido.getDetalles(), no un findById suelto), así que
+    el IDOR cross-tenant mencionado en auditorías previas de este proyecto ya NO
+    reproduce en el código actual.
 
 
 ────────────────────────────────────────────────────────────────────────────────
 9. MÓDULOS IMPLEMENTADOS vs PENDIENTES
 ────────────────────────────────────────────────────────────────────────────────
 
-COMPLETADOS ✓
-  Backend:
-    [x] Auth JWT multi-tenant
-    [x] CRUD empresas
-    [x] CRUD usuarios (con password seguro y roles)
-    [x] CRUD clientes
-    [x] CRUD categorías
-    [x] CRUD productos (con soft delete)
-    [x] CRUD insumos (con stock mínimo y alertas)
-    [x] Recetas (relación producto-insumo con cantidades)
-    [x] Kardex (trazabilidad de movimientos de inventario)
-    [x] Entradas, mermas, ajustes de inventario
-    [x] Ciclo completo de pedidos (BORRADOR → PAGADO)
-    [x] Descuentos en pedidos
-    [x] Cancelación de pedidos
-    [x] KDS con estados de preparación
-    [x] SSE tiempo real (NUEVO_PEDIDO, EN_PREPARACION, PEDIDO_LISTO)
-    [x] Descuento de stock automático al pagar (por receta)
-    [x] Sesiones de caja (apertura/cierre con cuadre)
-    [x] Pagos multi-método (Efectivo, Yape, Plin, Tarjeta, Transferencia)
-    [x] Reportes de ventas (JSON + Excel)
-    [x] Ticket térmico en texto plano
-    [x] Alertas de stock bajo
-    [x] Historial de pedidos por período
-    [x] AI module (stub condicional para futuro)
+COMPLETADOS ✓ (Backend)
+  [x] Módulo 0 — Entitlements por plan/suscripción (ModuloInterceptor, @RequiereModulo)
+  [x] Auth JWT multi-tenant, con token de larga duración para COCINA
+  [x] CRUD usuarios, clientes, categorías, productos (soft delete), insumos
+  [x] Recetas + Kardex con trazabilidad completa (entrada/merma/ajuste/reserva/consumo)
+  [x] Ciclo completo de pedidos (BORRADOR → PAGADO) con estado agregado + estado por ítem
+  [x] Descuentos y cancelación de pedidos
+  [x] Módulo 4 — comandas múltiples, cancelación de ítem individual con auditoría,
+      split de cuentas (documentos de cobro por ítems o por monto)
+  [x] KDS con estados de preparación y consumo real de inventario en EN_PREPARACION
+  [x] SSE tiempo real, indexado por (empresa, usuario, rol), con escalación automática
+      por tiempo (EscalacionScheduler)
+  [x] Módulo 5 — costeo real (snapshot de costo por ítem) y reporte de margen bruto
+      por producto/categoría, incluyendo costo de merma
+  [x] Módulo 6 — doble disponibilidad (AGOTADO_TEMPORAL/AGOTADO_SERVICIO), reseteo
+      automático al cerrar caja, cálculo de porciones disponibles por receta
+  [x] Sesiones de caja (apertura/cierre con cuadre automático vía columna GENERATED)
+  [x] Pagos multi-método (Efectivo, Yape, Plin, Tarjeta, Transferencia)
+  [x] Módulo 7 — comprobantes de venta (NOTA_VENTA/BOLETA/FACTURA) con IGV y
+      correlativo atómico, aunque sin integración SUNAT/OSE real
+  [x] Reportes de ventas (JSON + Excel), ticket térmico en texto plano
+  [x] Alertas de stock bajo, historial de pedidos por período
 
-  Frontend:
-    [x] Login con redirección por rol
-    [x] Pantalla Mozo (carta + carrito + pedidos activos con SSE)
-    [x] KDS Cocina (oscuro, dos columnas, SSE)
-    [x] Dashboard Gerente (KPIs + gráfico + alertas)
-    [x] Pantalla Cajero (caja + cobro multi-método)
-    [x] Rutas protegidas por rol
-    [x] Estado global persistido (Zustand + localStorage)
+EN ANDAMIAJE, SIN CABLEAR A NINGÚN FLUJO (existe el código, nadie lo llama)
+  [ ] AuditoriaLog / IAuditoriaService.registrarAccion() — no se invoca desde ningún
+      controller o service todavía.
+  [ ] AiIntegrationController y DTOs Dialogflow — clases vacías, solo el toggle
+      ai.module.enabled existe.
+  [ ] LevenshteinUtil — clase vacía (para búsqueda fuzzy de productos, sin implementar).
 
 PENDIENTES / IDEAS A IMPLEMENTAR ✗
   Backend:
-    [ ] Refresh tokens (JWT de larga duración + refresh de corta)
-    [ ] Rate limiting en login (prevenir brute force)
-    [ ] Notificaciones push (WebSocket o Firebase FCM)
-    [ ] Módulo de reservas de mesa
-    [ ] Facturación electrónica (SUNAT - SOAP o REST)
-    [ ] Integración pasarela de pagos (Culqi, Izipay)
-    [ ] Módulo de proveedores (compras, órdenes de compra)
+    [ ] Integración SUNAT/OSE real para BOLETA/FACTURA (hoy son stubs sin envío)
+    [ ] Refresh tokens
+    [ ] Rate limiting en login
+    [ ] Bloqueo pesimista/optimista en operaciones concurrentes de inventario y split de pago
+    [ ] Notificaciones push (WebSocket o Firebase FCM) más allá de SSE
+    [ ] Módulo de reservas de mesa (enum RESERVAS existe en Modulo, sin implementación)
+    [ ] Módulo de fidelización (enum FIDELIZACION existe, sin implementación)
+    [ ] Integración pasarela de pagos real (Culqi, Izipay) — campos preparados en
+        TransaccionPago (referenciaPasarela) pero sin integración
+    [ ] Módulo de proveedores/compras
     [ ] Módulo de delivery con geolocalización
-    [ ] Costo de ventas calculado (para margen bruto en reportes)
     [ ] Multi-idioma (i18n)
-    [ ] Módulo de fidelización de clientes (puntos, historial)
     [ ] Backup automático de base de datos
+    [ ] Endpoint de creación de empresas vía API (hoy solo GET/PUT en EmpresaController)
 
-  Frontend:
+  Frontend (LRDS_Front):
+    [ ] UI para Módulo 4: agregar ítems a pedido activo, cancelar ítem individual, split de cuentas
+    [ ] UI para Módulo 6: marcar agotado temporal/servicio, ver porciones disponibles
+    [ ] UI para Módulo 7: emitir/anular comprobantes de venta
+    [ ] UI para Módulo 5: dashboard de margen de utilidad
+    [ ] Consumir modulosHabilitados/estadoSuscripcion del login (ya vienen del backend)
     [ ] Gestión de usuarios/productos/insumos desde la UI (actualmente solo API)
     [ ] Panel de configuración de la empresa
-    [ ] Historial de pedidos pagados con filtros
-    [ ] Modo offline básico (Service Worker / cache)
-    [ ] App móvil (React Native o PWA)
-    [ ] Imágenes de productos
-    [ ] Variantes de productos en el menú (tamaños)
-    [ ] Carta digital para clientes (QR → menú web)
+    [ ] Historial de pedidos pagados con filtros en UI
+    [ ] Modo offline básico, app móvil, imágenes de productos, carta digital QR
 
   Infraestructura:
     [ ] Docker Compose (backend + frontend + postgres)
     [ ] CI/CD pipeline
-    [ ] Dominio + SSL
-    [ ] Backups automatizados PostgreSQL
-    [ ] Monitoreo (logs centralizados, métricas)
+    [ ] Dominio + SSL, backups automatizados, monitoreo/logs centralizados
     [ ] Plan de escalabilidad horizontal (si crece a N empresas)
 
 
@@ -618,77 +687,87 @@ PENDIENTES / IDEAS A IMPLEMENTAR ✗
 10. MODELO DE NEGOCIO (SaaS)
 ────────────────────────────────────────────────────────────────────────────────
 
-Modelo actual (hipotético):
-  El sistema está diseñado para ser multi-tenant desde su arquitectura base.
-  Un solo despliegue puede atender múltiples restaurantes con datos aislados.
+El modelo de planes YA tiene soporte técnico real (Módulo 0: Plan → PlanModulo →
+Suscripcion → Empresa), no es solo una idea hipotética como en la versión anterior
+de este documento — el gate de módulos premium (REPORTES_AVANZADOS, FACTURACION,
+RESERVAS, FIDELIZACION) funciona en runtime vía ModuloInterceptor.
 
 Posibles modelos de monetización a evaluar:
   - Suscripción mensual por restaurante (modelo SaaS clásico)
-    Ej: S/99/mes básico, S/199/mes con módulos avanzados
-  - Freemium: versión gratuita limitada (1 caja, 5 productos) + pago por upgrades
+    Ej: S/99/mes básico (módulos core), S/199/mes con módulos premium
+  - Freemium: versión gratuita limitada + pago por upgrades
   - Por volumen de transacciones (% pequeño sobre cada pedido procesado)
   - Setup fee + mensualidad (común en mercado peruano de software empresarial)
   - Licencia perpetua para restaurantes que quieran servidor propio
 
 Segmentación potencial de clientes:
-  Tier 1: Restaurante pequeño (1 local, 1-2 mozos, 1 cajero)
-  Tier 2: Restaurante mediano (1-3 locales, equipo completo)
+  Tier 1: Restaurante pequeño (1 local, 1-2 mozos, 1 cajero) — plan básico (core)
+  Tier 2: Restaurante mediano (1-3 locales, equipo completo) — plan con premium
   Tier 3: Cadena (N locales, cada uno como tenant separado, reportes consolidados)
 
 Competidores referentes en Perú:
-  - Rest (software local)
-  - Alegra POS
-  - El Mandado
-  - Waiter (app mozo)
-  - Sistemas custom hechos a medida
+  Rest, Alegra POS, El Mandado, Waiter, sistemas custom hechos a medida.
 
 
 ────────────────────────────────────────────────────────────────────────────────
-11. ESTRUCTURA DE CARPETAS DEL REPOSITORIO
+11. ESTRUCTURA DE CARPETAS DE LOS REPOSITORIOS
 ────────────────────────────────────────────────────────────────────────────────
 
-LRDScore/
+Ya NO es un monorepo. Backend y frontend viven en repositorios Git independientes,
+ambos bajo la misma carpeta local Desktop/LRDS/:
+
+LRDScore/                          (backend — repo propio)
   src/main/java/com/rutadelsabor/core/
-    config/           — SseEmitterManager, OpenApiConfig
+    annotations/      — @RequiereModulo
+    interceptors/      — ModuloInterceptor
+    config/           — SseEmitterManager, OpenApiConfig, security/ (SecurityConfig,
+                        CorsConfig, PasswordEncoderConfig), tenant/ (TenantContext,
+                        TenantInterceptor, TenantIdentifierResolver)
     controllers/      — AuthController, EmpresaController, UsuarioController,
                         ClienteController, PedidoController, KdsController,
                         InventarioController, CajaController, ReporteController,
-                        AiIntegrationController (stub)
+                        DocumentoVentaController, AiIntegrationController (stub)
     dto/
-      request/        — PedidoRequestDTO, UsuarioRequestDTO, PagoRequestDTO,
-                        PagoItemDTO, SesionCajaRequestDTO, CambiarPasswordDTO,
-                        InsumoRequestDTO, ProductoRequestDTO, RecetaRequestDTO,
-                        EntradaAlmacenRequestDTO, MermaRequestDTO, AjusteInventarioRequestDTO
-      response/       — PedidoActivoResponseDTO, DashboardVentasDTO
-    exceptions/       — RecursoNoEncontradoException
+      request/        — ~20 DTOs de entrada (Pedido, Usuario, Pago, SesionCaja,
+                        CambiarPassword, Insumo, Producto, Receta, EntradaAlmacen,
+                        Merma, AjusteInventario, AgregarItems, CancelarItem,
+                        DocumentoCobro, EmitirDocumentoVenta, AnularDocumentoVenta,
+                        Empresa, Cliente, Categoria, Login)
+      response/       — PedidoActivoResponseDTO, DashboardVentasDTO, MargenVentasDTO,
+                        DocumentoCobroResponseDTO, DocumentoVentaResponseDTO,
+                        InsumoFaltanteDTO, KdsCocinaDTO, PorcionDisponibleDTO,
+                        AuthResponseDTO
+      ai/             — DialogflowRequestDTO/ResponseDTO (vacíos)
+    exceptions/       — RecursoNoEncontradoException, ReglaNegocioException,
+                        StockInsuficienteException(+ResponseDTO), ModuloNoHabilitadoException,
+                        SuscripcionVencidaException, GlobalExceptionHandler
     models/
-      entities/       — (ver sección 4)
-      enums/          — EstadoPedido, EstadoCaja, MetodoPago, RolUsuario
-    repositories/     — UsuarioRepository, EmpresaRepository, PedidoRepository,
-                        InventarioRepository, CajaRepository, etc.
+      entities/       — (ver sección 4, incluye Suscripcion/Plan/PlanModulo,
+                        DocumentoCobro/DocumentoVenta, AuditoriaLog, vistas VwXxx)
+      enums/          — EstadoPedido, EstadoItem, EstadoCaja, EstadoDisponibilidad,
+                        EstadoEmision, EstadoSuscripcion, MetodoPago, Modulo,
+                        RolUsuario, TipoDocumentoVenta
+    repositories/     — Spring Data JPA por cada entidad + vistas
     security/         — JwtProvider, JwtRequestFilter, UserDetailsImpl,
                         UserDetailsServiceImpl
     services/
-      interfaces/     — IPedidoService, IUsuarioService, IInventarioService,
-                        ICajaService, IReporteService, IKdsService
-      impl/           — PedidoServiceImpl, UsuarioServiceImpl, InventarioServiceImpl,
-                        CajaServiceImpl, ReporteServiceImpl, KdsServiceImpl
-      reportes/       — TicketManager (tickets térmicos), generación Excel
-  src/main/resources/
-    application.properties
+      interfaces/ + impl/  — Auth, Usuario, Pedido, Inventario, Caja, Reporte, Kds,
+                             Suscripcion, DocumentoVenta, Auditoria
+      reportes/       — TicketManager, ExcelReportManager
+      EscalacionScheduler.java
+    utils/            — Constantes, LevenshteinUtil (vacío)
+  src/main/resources/application.properties
+  pom.xml (java.version=21, spring-boot-starter-parent 4.0.6)
 
-  frontend/
-    src/
-      api/            — client.ts, auth.ts, pedidos.ts, kds.ts, reportes.ts, caja.ts
-      components/     — PrivateRoute.tsx
-      pages/          — LoginPage.tsx, MozoPage.tsx, KdsPage.tsx,
-                        DashboardPage.tsx, CajeroPage.tsx
-      store/          — authStore.ts
-      types/          — index.ts
-      App.tsx, main.tsx, index.css
-    vite.config.ts
-    tsconfig.app.json
-    package.json
+LRDS_Front/                        (frontend — repo propio, pnpm)
+  src/
+    api/ (auth, caja, client, kds, pedidos, reportes)
+    components/ (PrivateRoute)
+    pages/ (Login, Mozo, Kds, Dashboard, Cajero)
+    store/ (authStore)
+    types/ (index, auth)
+    App.tsx, main.tsx, index.css
+  vite.config.ts, tailwind.config.js, package.json (pnpm)
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -696,34 +775,55 @@ LRDScore/
 ────────────────────────────────────────────────────────────────────────────────
 
 1. Multi-tenancy por columna vs esquema:
-   Se eligió columna (empresa_id) sobre esquema separado por simplicidad de
-   migración y compatibilidad nativa con @TenantId de Hibernate 6.
-   Trade-off: menor aislamiento físico, pero suficiente para el tamaño del mercado.
+   Columna (empresa_id) sobre esquema separado, por simplicidad y compatibilidad
+   nativa con @TenantId de Hibernate. Menor aislamiento físico, suficiente para el
+   tamaño del mercado objetivo.
 
-2. SSE sobre WebSocket:
-   SSE es unidireccional (server → client) y suficiente para los casos de uso
-   (notificar pedidos listos). Es más simple de implementar y escala bien con
-   un load balancer sticky-session. WebSocket sería necesario solo si el cliente
-   necesita enviar mensajes al servidor en tiempo real.
+2. Entitlements desacoplados de roles (Módulo 0):
+   @PreAuthorize (rol) y ModuloInterceptor (plan/suscripción) son dos chequeos
+   independientes y ambos deben pasar. Permite vender el mismo rol (ej. GERENTE)
+   con distintas capacidades según el plan contratado, sin tocar la matriz de roles.
 
-3. Sin ORM con esquema automático (ddl-auto=none):
-   La base de datos se gestiona con scripts SQL versionados. Esto da control
-   total sobre índices, vistas (vw_kds_cocina, vw_dashboard_ventas), columnas
-   generadas (diferencia en sesiones_caja) y constraints.
+3. Timing del consumo de inventario — CAMBIÓ respecto al diseño original:
+   El consumo real (descuento de stock_actual) ya NO ocurre al pagar; ocurre cuando
+   cocina marca EN_PREPARACION. Esto permite: (a) que Módulo 6 (doble 86) tenga
+   sentido — el producto se "gasta" cuando se cocina, no cuando se cobra — y
+   (b) detectar quiebres de stock físico antes del cobro, marcando requiereRevision
+   en vez de fallar silenciosamente. La reserva (Módulo 3, al confirmar) sigue
+   existiendo para bloquear stock lógico entre el pedido y la cocina.
 
-4. Gráfico SVG sin librería:
-   DashboardPage implementa un gráfico de barras con SVG puro para evitar
-   agregar dependencias pesadas (Recharts, Chart.js). Trade-off: menos features,
-   pero bundle más pequeño.
+4. Snapshot de costo por ítem (costo_unitario_consumido):
+   Se congela en EN_PREPARACION y nunca se recalcula. Si el costo del insumo sube
+   mañana, los reportes de margen de pedidos ya cocinados no se alteran retroactivamente.
 
-5. Pago multi-método:
-   Una sola transacción de pedido puede tener múltiples TransaccionPago.
-   Esto permite dividir el pago (Yape S/10 + Efectivo S/5.50) sin complejidad
-   extra. El total se valida en el frontend antes de enviar.
+5. SSE sobre WebSocket, ahora con indexado por rol:
+   Unidireccional y suficiente para notificar cambios de estado. El indexado por
+   (empresa, usuario) + rol permite tanto notificar a un usuario puntual como a
+   "todos los cajeros del tenant" (escalación) sin canales separados.
 
-6. Soft delete universal:
-   Todos los recursos usan estado_registro=false en lugar de DELETE físico.
-   Preserva integridad referencial e historial para reportes.
+6. Correlativo de comprobantes vía INSERT ... ON CONFLICT DO UPDATE:
+   Evita huecos en la numeración sin necesidad de bloqueos de aplicación, incluso
+   con múltiples nodos del backend corriendo en paralelo (una sola sentencia SQL
+   atómica sobre PostgreSQL resuelve la concurrencia).
+
+7. Sin ORM con esquema automático (ddl-auto=none):
+   La base de datos se gestiona con scripts SQL versionados — control total sobre
+   índices, vistas, columnas generadas (diferencia en sesiones_caja) y constraints.
+
+8. Pago multi-método y split de cuentas conviven pero no deben mezclarse:
+   Un pedido puede pagarse por la vía directa (/pagar) o por documentos de cobro
+   (split), pero mezclar ambos flujos en la misma mesa genera inconsistencias
+   lógicas — es una decisión de UI, no del backend, mantenerlos separados.
+
+9. Soft delete universal:
+   estado_registro=false en lugar de DELETE físico, preserva integridad referencial
+   e historial para reportes y auditoría.
+
+10. Zona horaria forzada a America/Lima:
+    TimeZone.setDefault() en el arranque de CoreApplication (antes de que Spring
+    levante el contexto) + spring.jackson.time-zone=America/Lima, para que
+    ZoneId.systemDefault() (usado en timestamps y en el filtro de reportes) y la
+    serialización JSON sean consistentes con la zona horaria del mercado objetivo.
 
 
 ================================================================================
