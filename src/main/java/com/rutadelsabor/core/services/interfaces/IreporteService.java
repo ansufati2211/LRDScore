@@ -1,4 +1,4 @@
-package com.rutadelsabor.core.services.interfaces;
+    package com.rutadelsabor.core.services.interfaces;
 
 import com.rutadelsabor.core.dto.response.DashboardVentasDTO;
 import com.rutadelsabor.core.dto.response.MargenVentasDTO;
@@ -9,4 +9,5 @@ public interface IReporteService {
     byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin);
     // R5-2: solo disponible si el tenant tiene REPORTES_AVANZADOS habilitado
     MargenVentasDTO obtenerMargenVentas(LocalDate inicio, LocalDate fin);
+
 }
