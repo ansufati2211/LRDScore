@@ -30,8 +30,11 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         TenantContext.setCurrentTenant(empresaId);
 
         try {
-            // 3. Ahora sí, cargar la entidad completa de forma 100% segura con JPA
-            Usuario usuario = usuarioRepository.findByCorreo(correo)
+            // 3. Ahora sí, cargar la entidad completa. Usamos findByCorreoYEmpresa (nativa) en vez de
+            // findByCorreo porque esta última pasa por el filtro @TenantId de Hibernate, cuyo valor
+            // queda fijado en -1 al abrir la Session (spring.jpa.open-in-view) antes de que el
+            // TenantContext.setCurrentTenant() de la línea anterior surta efecto.
+            Usuario usuario = usuarioRepository.findByCorreoYEmpresa(correo, empresaId)
                     .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
             
             return new UserDetailsImpl(usuario);

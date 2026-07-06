@@ -371,6 +371,16 @@ public class PedidoServiceImpl implements IPedidoService {
         detalle.setEstadoItem(EstadoItem.CANCELADO);
         detalle.setMotivoCancelacion(motivo);
 
+        // Recalcular subtotal/total excluyendo el ítem recién cancelado — sin esto, el pedido
+        // queda cobrando (directo o por split) el monto de ítems que ya no están en la cuenta.
+        BigDecimal nuevoSubtotal = pedido.getDetalles().stream()
+                .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
+                .map(PedidoDetalle::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        pedido.setSubtotal(nuevoSubtotal);
+        pedido.setTotal(nuevoSubtotal.subtract(
+                pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO));
+
         // R4-7: recalcular estado agregado
         pedido.setEstadoActual(calcularEstadoAgregado(pedido.getDetalles()));
         pedidoRepository.save(pedido);

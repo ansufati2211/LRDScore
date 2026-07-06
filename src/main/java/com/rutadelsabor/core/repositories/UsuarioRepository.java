@@ -18,4 +18,10 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     // NUEVO: Consulta ultraligera solo para averiguar a qué empresa pertenece el correo
     @Query(value = "SELECT empresa_id FROM usuarios WHERE correo = :correo AND estado_registro = true", nativeQuery = true)
     Long findEmpresaIdByCorreo(@Param("correo") String correo);
+
+    // Nativa a propósito: bypassa el filtro @TenantId de Hibernate, que con spring.jpa.open-in-view
+    // (activo por defecto) queda fijado en -1 desde el inicio del request — antes de que
+    // TenantContext.setCurrentTenant() se ejecute durante la autenticación. Ver UserDetailsServiceImpl.
+    @Query(value = "SELECT * FROM usuarios WHERE correo = :correo AND empresa_id = :empresaId", nativeQuery = true)
+    Optional<Usuario> findByCorreoYEmpresa(@Param("correo") String correo, @Param("empresaId") Long empresaId);
 }
