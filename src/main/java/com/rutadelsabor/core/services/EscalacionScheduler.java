@@ -7,7 +7,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,9 @@ import java.util.stream.Collectors;
 public class EscalacionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(EscalacionScheduler.class);
+    
+    // S1192: Constante para evitar literales duplicados
+    private static final String EVENTO_AVISO = "AVISO_PEDIDO_LISTO";
 
     // R2-4: niveles de escalación ya enviados por pedido (1=sala, 2=caja, 3=gerencia).
     // Limpiado automáticamente cuando el pedido sale del estado LISTO.
@@ -47,7 +51,8 @@ public class EscalacionScheduler {
                         rs.getObject("numero_orden", Integer.class),
                         rs.getString("identificador_mesa_referencia"),
                         rs.getString("tipo_consumo"),
-                        rs.getTimestamp("updated_at").toLocalDateTime()
+                        // S8700/S8688: Convertir explícitamente a ZonedDateTime
+                        rs.getTimestamp("updated_at").toLocalDateTime().atZone(ZoneId.systemDefault())
                 )
         );
 
@@ -55,38 +60,47 @@ public class EscalacionScheduler {
         Set<Long> activosIds = activos.stream().map(PedidoListoRow::id).collect(Collectors.toSet());
         escalacionesEnviadas.keySet().retainAll(activosIds);
 
+        // S8688: Usar now() especificando el ZoneId
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.systemDefault());
+
         for (PedidoListoRow row : activos) {
-            long min = ChronoUnit.MINUTES.between(row.updatedAt(), LocalDateTime.now());
-            Set<Integer> enviados = escalacionesEnviadas.computeIfAbsent(row.id(), k -> ConcurrentHashMap.newKeySet());
+            procesarEscalacion(row, now);
+        }
+    }
 
-            Map<String, Object> payload = Map.of(
-                    "pedidoId", row.id(),
-                    "numeroOrden", row.numeroOrden() != null ? row.numeroOrden() : row.id(),
-                    "mesa", row.mesa() != null ? row.mesa() : "",
-                    "tipoConsumo", row.tipoConsumo() != null ? row.tipoConsumo() : ""
-            );
+    // S3776: Extracción a método privado para reducir la Complejidad Cognitiva
+    private void procesarEscalacion(PedidoListoRow row, ZonedDateTime now) {
+        long min = ChronoUnit.MINUTES.between(row.updatedAt(), now);
+        Set<Integer> enviados = escalacionesEnviadas.computeIfAbsent(row.id(), k -> ConcurrentHashMap.newKeySet());
 
-            // t >= 5 min → GERENTE/SUPER_ADMIN (plano vertical, R2)
-            if (min >= 5 && enviados.add(3)) {
-                log.info("Escalación nivel 3 (GERENCIA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
-                sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_GERENTE", "AVISO_PEDIDO_LISTO", payload);
-                sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_SUPER_ADMIN", "AVISO_PEDIDO_LISTO", payload);
-            }
+        // S2154: Casteo a (Object) para unificar tipos del operador ternario
+        Map<String, Object> payload = Map.of(
+                "pedidoId", row.id(),
+                "numeroOrden", row.numeroOrden() != null ? row.numeroOrden() : (Object) row.id(),
+                "mesa", row.mesa() != null ? row.mesa() : "",
+                "tipoConsumo", row.tipoConsumo() != null ? row.tipoConsumo() : ""
+        );
 
-            // t >= 2 min → CAJERO (plano horizontal nivel 2, R2)
-            if (min >= 2 && enviados.add(2)) {
-                log.info("Escalación nivel 2 (CAJA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
-                sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_CAJERO", "AVISO_PEDIDO_LISTO", payload);
-            }
+        // t >= 5 min → GERENTE/SUPER_ADMIN (plano vertical, R2)
+        if (min >= 5 && enviados.add(3)) {
+            log.info("Escalación nivel 3 (GERENCIA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
+            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_GERENTE", EVENTO_AVISO, payload);
+            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_SUPER_ADMIN", EVENTO_AVISO, payload);
+        }
 
-            // t >= 1 min → todos los MOZOs del tenant (plano horizontal nivel 1, R2)
-            if (min >= 1 && enviados.add(1)) {
-                log.info("Escalación nivel 1 (SALA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
-                sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_MOZO", "AVISO_PEDIDO_LISTO", payload);
-            }
+        // t >= 2 min → CAJERO (plano horizontal nivel 2, R2)
+        if (min >= 2 && enviados.add(2)) {
+            log.info("Escalación nivel 2 (CAJA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
+            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_CAJERO", EVENTO_AVISO, payload);
+        }
+
+        // t >= 1 min → todos los MOZOs del tenant (plano horizontal nivel 1, R2)
+        if (min >= 1 && enviados.add(1)) {
+            log.info("Escalación nivel 1 (SALA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
+            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_MOZO", EVENTO_AVISO, payload);
         }
     }
 
     record PedidoListoRow(Long id, Long empresaId, Long mozoId, Integer numeroOrden,
-                          String mesa, String tipoConsumo, LocalDateTime updatedAt) {}
+                          String mesa, String tipoConsumo, ZonedDateTime updatedAt) {}
 }

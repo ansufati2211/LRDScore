@@ -3,7 +3,7 @@ package com.rutadelsabor.core.dto.response;
 import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.Instant;
 import java.util.List;
 
 @Getter
@@ -14,7 +14,7 @@ public class PedidoResponseDTO {
     private String identificadorMesaReferencia;
     private String estadoActual;
     private BigDecimal total;
-    private Date createdAt;
+    private Instant createdAt;
     private List<DetalleDTO> detalles;
 
     @Getter

@@ -30,6 +30,7 @@ public class ModuloInterceptor implements HandlerInterceptor {
     }
 
     @Override
+    @SuppressWarnings("java:S3516") // Se suprime porque la interfaz exige devolver boolean, y en Spring lanzar excepciones para denegar el paso es la práctica estándar.
     public boolean preHandle(HttpServletRequest request,
                              HttpServletResponse response,
                              Object handler) {
@@ -62,29 +63,30 @@ public class ModuloInterceptor implements HandlerInterceptor {
         EstadoSuscripcion estado = suscripcion.getEstado();
 
         if (estado == EstadoSuscripcion.ACTIVA) {
-            return verificarModuloEnPlan(suscripcion, modulo);
+            verificarModuloEnPlan(suscripcion, modulo);
+            return true; // <-- Devuelve true después de la validación void
         }
 
         if (estado == EstadoSuscripcion.VENCIDA) {
-            return verificarVencida(request, modulo);
+            verificarVencida(request, modulo);
+            return true; // <-- Devuelve true después de la validación void
         }
 
         // SUSPENDIDA u otro estado desconocido
         throw new ModuloNoHabilitadoException(modulo);
     }
 
-    // Verifica que el plan activo incluya el módulo requerido
-    private boolean verificarModuloEnPlan(Suscripcion suscripcion, Modulo modulo) {
+    // Verifica que el plan activo incluya el módulo requerido (Refactorizado a void)
+    private void verificarModuloEnPlan(Suscripcion suscripcion, Modulo modulo) {
         boolean habilitado = suscripcion.getPlan().getModulos().stream()
                 .anyMatch(pm -> pm.getCodigoModulo() == modulo);
         if (!habilitado) {
             throw new ModuloNoHabilitadoException(modulo);
         }
-        return true;
     }
 
-    // E0-1: VENCIDA → core=solo lectura, premium=bloqueado
-    private boolean verificarVencida(HttpServletRequest request, Modulo modulo) {
+    // E0-1: VENCIDA → core=solo lectura, premium=bloqueado (Refactorizado a void)
+    private void verificarVencida(HttpServletRequest request, Modulo modulo) {
         if (!modulo.esCore()) {
             throw new ModuloNoHabilitadoException(modulo);
         }
@@ -93,6 +95,5 @@ public class ModuloInterceptor implements HandlerInterceptor {
         if (!esLectura) {
             throw new SuscripcionVencidaException(modulo);
         }
-        return true;
     }
 }

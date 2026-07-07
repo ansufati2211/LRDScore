@@ -24,8 +24,8 @@ public class CajaController {
 
     @PostMapping("/abrir")
     public ResponseEntity<SesionCaja> abrirCaja(@RequestBody SesionCajaRequestDTO dto, Authentication auth) {
-        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
-        return ResponseEntity.ok(cajaService.abrirCaja(cajero.getUsuarioId(), dto.getMontoInicial()));
+        Long usuarioId = obtenerUsuarioIdAutenticado(auth);
+        return ResponseEntity.ok(cajaService.abrirCaja(usuarioId, dto.getMontoInicial()));
     }
 
     @PutMapping("/cerrar/{id}")
@@ -35,13 +35,25 @@ public class CajaController {
 
     @GetMapping("/activa")
     public ResponseEntity<SesionCaja> obtenerCajaActiva(Authentication auth) {
-        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
-        return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(cajero.getUsuarioId()));
+        Long usuarioId = obtenerUsuarioIdAutenticado(auth);
+        return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(usuarioId));
     }
 
     @GetMapping("/historial")
     public ResponseEntity<List<SesionCaja>> listarHistorial(Authentication auth) {
-        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
-        return ResponseEntity.ok(cajaService.listarHistorialPorCajero(cajero.getUsuarioId()));
+        Long usuarioId = obtenerUsuarioIdAutenticado(auth);
+        return ResponseEntity.ok(cajaService.listarHistorialPorCajero(usuarioId));
+    }
+
+    /**
+     * Método auxiliar para extraer el ID del usuario de forma segura 
+     * y evitar advertencias de NullPointerException (java:S2259).
+     */
+    private Long obtenerUsuarioIdAutenticado(Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl cajero)) {
+            // Se puede lanzar tu ReglaNegocioException si prefieres un manejo global de errores
+            throw new IllegalStateException("No se pudo obtener la identidad del usuario autenticado");
+        }
+        return cajero.getUsuarioId();
     }
 }

@@ -27,7 +27,6 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class PedidoServiceImpl implements IPedidoService {
@@ -102,7 +101,7 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional
     public void confirmarPedido(Long id) {
-        Pedido pedido = obtenerPedido(id);
+        Pedido pedido = obtenerPedidoInterno(id);
         if (pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
             throw new ReglaNegocioException("Solo un pedido en BORRADOR puede ser confirmado hacia la cocina.");
         }
@@ -112,7 +111,7 @@ public class PedidoServiceImpl implements IPedidoService {
                 .map(PedidoDetalle::getProducto)
                 .filter(p -> p.getEstadoDisponibilidad() != EstadoDisponibilidad.DISPONIBLE)
                 .map(Producto::getNombre)
-                .collect(Collectors.toList());
+                .toList();
         if (!agotados.isEmpty()) {
             throw new ReglaNegocioException(
                     "El pedido contiene producto(s) agotado(s) y no puede confirmarse: " + String.join(", ", agotados));
@@ -134,11 +133,11 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional
     public void entregarPedido(Long id) {
-        Pedido pedido = obtenerPedido(id);
+        Pedido pedido = obtenerPedidoInterno(id);
 
         List<PedidoDetalle> activos = pedido.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
-                .collect(Collectors.toList());
+                .toList();
 
         boolean todosListos = activos.stream()
                 .allMatch(d -> d.getEstadoItem() == EstadoItem.LISTO
@@ -157,7 +156,7 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional
     public void procesarPago(Long pedidoId, PagoRequestDTO pagoDTO, Long cajeroId) {
-        Pedido pedido = obtenerPedido(pedidoId);
+        Pedido pedido = obtenerPedidoInterno(pedidoId);
 
         if (pedido.getEstadoActual() != EstadoPedido.LISTO && pedido.getEstadoActual() != EstadoPedido.ENTREGADO) {
             throw new ReglaNegocioException("El pedido debe estar LISTO o ENTREGADO para procesar el pago.");
@@ -195,14 +194,13 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional(readOnly = true)
     public Pedido obtenerPedido(Long id) {
-        return pedidoRepository.findById(id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Pedido no encontrado con ID: " + id));
+        return obtenerPedidoInterno(id);
     }
 
     @Override
     @Transactional
     public void cancelarPedido(Long id) {
-        Pedido p = obtenerPedido(id);
+        Pedido p = obtenerPedidoInterno(id);
         if (p.getEstadoActual() == EstadoPedido.PAGADO) {
             throw new ReglaNegocioException("No se puede cancelar un pedido ya PAGADO.");
         }
@@ -210,7 +208,7 @@ public class PedidoServiceImpl implements IPedidoService {
         // Liberar reservas solo de ítems aún PENDIENTE (recipe-based — seguro para multi-comanda)
         List<PedidoDetalle> pendientes = p.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() == EstadoItem.PENDIENTE)
-                .collect(Collectors.toList());
+                .toList();
         if (!pendientes.isEmpty()) {
             inventarioService.liberarReservaDeItems(id, pendientes);
         }
@@ -235,13 +233,13 @@ public class PedidoServiceImpl implements IPedidoService {
         return pedidoRepository.findByEstadoActualInOrderByCreatedAtDesc(estadosActivos)
                 .stream()
                 .map(this::mapToActivoResponseDTO)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     @Transactional
     public void aplicarDescuento(Long id, BigDecimal descuento) {
-        Pedido pedido = obtenerPedido(id);
+        Pedido pedido = obtenerPedidoInterno(id);
         if (pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
             throw new ReglaNegocioException("El descuento solo puede aplicarse a pedidos en estado BORRADOR.");
         }
@@ -262,7 +260,7 @@ public class PedidoServiceImpl implements IPedidoService {
                 estadosHistoricos, inicioDateTime, finDateTime)
                 .stream()
                 .map(this::mapToActivoResponseDTO)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     // --- MÓDULO 4 ---
@@ -270,7 +268,7 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional
     public void agregarItemsAPedido(Long pedidoId, AgregarItemsRequestDTO dto) {
-        Pedido pedido = obtenerPedido(pedidoId);
+        Pedido pedido = obtenerPedidoInterno(pedidoId);
 
         EstadoPedido estado = pedido.getEstadoActual();
         if (estado == EstadoPedido.BORRADOR || estado == EstadoPedido.PAGADO || estado == EstadoPedido.CANCELADO) {
@@ -300,7 +298,7 @@ public class PedidoServiceImpl implements IPedidoService {
             detalle.setNumeroComanda(nuevaComanda);
 
             return detalleRepository.save(detalle);
-        }).collect(Collectors.toList());
+        }).toList();
 
         // R4-2: reservar inventario solo de los nuevos ítems
         inventarioService.reservarInsumosParaPedido(pedidoId, nuevosDetalles);
@@ -329,14 +327,14 @@ public class PedidoServiceImpl implements IPedidoService {
                         "detalleId", d.getId(),
                         "producto", d.getProducto().getNombre(),
                         "cantidad", d.getCantidad()
-                )).collect(Collectors.toList())
+                )).toList()
         ));
     }
 
     @Override
     @Transactional
     public void cancelarItem(Long pedidoId, Long detalleId, String motivo, boolean esGerente) {
-        Pedido pedido = obtenerPedido(pedidoId);
+        Pedido pedido = obtenerPedidoInterno(pedidoId);
 
         if (pedido.getEstadoActual() == EstadoPedido.PAGADO || pedido.getEstadoActual() == EstadoPedido.CANCELADO) {
             throw new ReglaNegocioException("No se puede cancelar ítems de un pedido " + pedido.getEstadoActual() + ".");
@@ -389,7 +387,7 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional
     public DocumentoCobroResponseDTO crearDocumentoCobro(Long pedidoId, DocumentoCobroRequestDTO dto) {
-        Pedido pedido = obtenerPedido(pedidoId);
+        Pedido pedido = obtenerPedidoInterno(pedidoId);
 
         DocumentoCobro doc = new DocumentoCobro();
         doc.setPedido(pedido);
@@ -402,7 +400,7 @@ public class PedidoServiceImpl implements IPedidoService {
             List<PedidoDetalle> seleccionados = pedido.getDetalles().stream()
                     .filter(d -> dto.getDetalleIds().contains(d.getId())
                               && d.getEstadoItem() != EstadoItem.CANCELADO)
-                    .collect(Collectors.toList());
+                    .toList();
             BigDecimal subtotal = seleccionados.stream()
                     .map(PedidoDetalle::getSubtotal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -485,7 +483,7 @@ public class PedidoServiceImpl implements IPedidoService {
     public List<DocumentoCobroResponseDTO> listarDocumentosCobro(Long pedidoId) {
         return documentoCobroRepository.findByPedidoId(pedidoId).stream()
                 .map(this::mapToDocumentoCobroResponseDTO)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     // --- helpers privados ---
@@ -493,12 +491,20 @@ public class PedidoServiceImpl implements IPedidoService {
     private static EstadoPedido calcularEstadoAgregado(List<PedidoDetalle> detalles) {
         List<PedidoDetalle> activos = detalles.stream()
                 .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
-                .collect(Collectors.toList());
+                .toList();
         if (activos.isEmpty()) return EstadoPedido.CANCELADO;
         if (activos.stream().anyMatch(d -> d.getEstadoItem() == EstadoItem.EN_PREPARACION)) return EstadoPedido.EN_PREPARACION;
         if (activos.stream().anyMatch(d -> d.getEstadoItem() == EstadoItem.PENDIENTE))      return EstadoPedido.RECIBIDO;
         if (activos.stream().anyMatch(d -> d.getEstadoItem() == EstadoItem.LISTO))          return EstadoPedido.LISTO;
         return EstadoPedido.ENTREGADO;
+    }
+    
+    /**
+     * Método auxiliar privado para evitar el bypass del proxy de Spring AOP al llamar a métodos transaccionales internamente.
+     */
+    private Pedido obtenerPedidoInterno(Long id) {
+        return pedidoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Pedido no encontrado con ID: " + id));
     }
 
     private PedidoActivoResponseDTO mapToActivoResponseDTO(Pedido p) {
@@ -525,7 +531,7 @@ public class PedidoServiceImpl implements IPedidoService {
             item.setEstadoItem(d.getEstadoItem() != null ? d.getEstadoItem().name() : EstadoItem.PENDIENTE.name());
             item.setNumeroComanda(d.getNumeroComanda());
             return item;
-        }).collect(Collectors.toList());
+        }).toList();
 
         dto.setItems(items);
         return dto;
@@ -541,7 +547,7 @@ public class PedidoServiceImpl implements IPedidoService {
         dto.setMonto(doc.getMonto());
         dto.setDetalleIds(doc.getDetalles().stream()
                 .map(BaseTenantEntity::getId)
-                .collect(Collectors.toList()));
+                .toList());
         return dto;
     }
 }

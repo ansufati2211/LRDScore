@@ -26,6 +26,7 @@ import java.util.Map;
 public class InventarioServiceImpl implements IInventarioService {
 
     private static final String INSUMO_NO_ENCONTRADO = "Insumo no encontrado";
+    private static final String TIPO_MOVIMIENTO_RESERVA = "RESERVA";
 
     private final CategoriaRepository categoriaRepository;
     private final InsumoRepository insumoRepository;
@@ -214,7 +215,7 @@ public class InventarioServiceImpl implements IInventarioService {
                 .orElseThrow(() -> new RecursoNoEncontradoException(INSUMO_NO_ENCONTRADO));
 
         BigDecimal stockAnterior = insumo.getStockActual();
-        BigDecimal stockPosterior = dto.getEsPositivo()
+        BigDecimal stockPosterior = Boolean.TRUE.equals(dto.getEsPositivo())
                 ? stockAnterior.add(dto.getCantidad())
                 : stockAnterior.subtract(dto.getCantidad());
 
@@ -225,7 +226,7 @@ public class InventarioServiceImpl implements IInventarioService {
         insumo.setStockActual(stockPosterior);
         insumoRepository.save(insumo);
 
-        String tipo = dto.getEsPositivo() ? "ENTRADA_AJUSTE" : "SALIDA_AJUSTE";
+        String tipo = Boolean.TRUE.equals(dto.getEsPositivo()) ? "ENTRADA_AJUSTE" : "SALIDA_AJUSTE";
         registrarMovimientoKardex(insumo, tipo, dto.getCantidad(), stockAnterior, stockPosterior, insumo.getCostoUnitario(), usuario, dto.getMotivo());
     }
 
@@ -249,63 +250,20 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public void reservarInsumosParaPedido(Long pedidoId, List<PedidoDetalle> detalles) {
-        // Agregar totales por insumo para evitar validaciones parciales cuando el mismo
-        // insumo aparece en la receta de varios productos del mismo pedido.
-        Map<Long, BigDecimal> totalPorInsumo = new LinkedHashMap<>();
-        Map<Long, Insumo> insumosPorId = new LinkedHashMap<>();
-
-        for (PedidoDetalle detalle : detalles) {
-            List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(detalle.getProducto().getId());
-            if (receta.isEmpty()) continue; // E3-3: producto sin receta, no genera movimiento
-
-            BigDecimal factor = new BigDecimal(detalle.getCantidad());
-            for (RecetaDetalle rd : receta) {
-                Insumo insumo = rd.getInsumo();
-                totalPorInsumo.merge(insumo.getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
-                insumosPorId.put(insumo.getId(), insumo);
-            }
-        }
-
-        // R3-1: validar disponibilidad completa antes de reservar nada
-        List<InsumoFaltanteDTO> faltantes = new ArrayList<>();
-        for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
-            Insumo insumo = insumosPorId.get(entry.getKey());
-            BigDecimal necesario = entry.getValue();
-            BigDecimal disponible = insumo.getStockActual().subtract(insumo.getStockReservado());
-            if (disponible.compareTo(necesario) < 0) {
-                faltantes.add(new InsumoFaltanteDTO(insumo.getNombre(), disponible.max(BigDecimal.ZERO), necesario));
-            }
-        }
+        Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
+        Map<Long, Insumo> insumosPorId = cargarInsumos(totalPorInsumo);
+        List<InsumoFaltanteDTO> faltantes = validarDisponibilidadReserva(totalPorInsumo, insumosPorId);
         if (!faltantes.isEmpty()) {
             throw new StockInsuficienteException(faltantes);
         }
 
-        // Registrar reservas: incrementa stock_reservado sin tocar stock_actual
-        for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
-            Insumo insumo = insumosPorId.get(entry.getKey());
-            BigDecimal cantidad = entry.getValue();
-            BigDecimal stockActual = insumo.getStockActual();
-
-            insumo.setStockReservado(insumo.getStockReservado().add(cantidad));
-            insumoRepository.save(insumo);
-
-            KardexMovimiento mov = new KardexMovimiento();
-            mov.setInsumo(insumo);
-            mov.setTipoMovimiento("RESERVA");
-            mov.setCantidad(cantidad);
-            mov.setStockAnterior(stockActual);
-            mov.setStockPosterior(stockActual); // RESERVA no descuenta stock_actual
-            mov.setCostoUnitario(insumo.getCostoUnitario());
-            mov.setPedidoId(pedidoId);
-            mov.setObservacion("Reserva para pedido #" + pedidoId);
-            kardexRepository.save(mov);
-        }
+        registrarReservas(pedidoId, totalPorInsumo, insumosPorId);
     }
 
     @Override
     @Transactional
     public void liberarReservaDePedido(Long pedidoId) {
-        List<KardexMovimiento> reservas = kardexRepository.findByPedidoIdAndTipoMovimiento(pedidoId, "RESERVA");
+        List<KardexMovimiento> reservas = kardexRepository.findByPedidoIdAndTipoMovimiento(pedidoId, TIPO_MOVIMIENTO_RESERVA);
         for (KardexMovimiento reserva : reservas) {
             Insumo insumo = reserva.getInsumo();
             BigDecimal cantidad = reserva.getCantidad();
@@ -330,7 +288,7 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public boolean convertirReservaAConsumo(Long pedidoId) {
-        List<KardexMovimiento> reservas = kardexRepository.findByPedidoIdAndTipoMovimiento(pedidoId, "RESERVA");
+        List<KardexMovimiento> reservas = kardexRepository.findByPedidoIdAndTipoMovimiento(pedidoId, TIPO_MOVIMIENTO_RESERVA);
         boolean requiereRevision = false;
 
         for (KardexMovimiento reserva : reservas) {
@@ -372,16 +330,107 @@ public class InventarioServiceImpl implements IInventarioService {
     @Override
     @Transactional
     public boolean convertirItemsAConsumo(Long pedidoId, List<PedidoDetalle> detalles) {
-        Map<Long, BigDecimal> totalPorInsumo = new LinkedHashMap<>();
-        Map<Long, Insumo> insumosPorId = new LinkedHashMap<>();
-        // R5-1: snapshot de costo por ítem antes de tocar el stock
-        Map<Long, BigDecimal> costoUnitarioPorDetalle = new LinkedHashMap<>();
+        Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
+        Map<Long, Insumo> insumosPorId = cargarInsumos(totalPorInsumo);
+        Map<Long, BigDecimal> costoUnitarioPorDetalle = calcularCostoUnitarioPorDetalle(detalles);
+        boolean requiereRevision = false;
+        requiereRevision = consumirInsumos(pedidoId, totalPorInsumo, insumosPorId);
 
+        persistirCostoUnitarioConsumido(detalles, costoUnitarioPorDetalle);
+
+        return requiereRevision;
+    }
+
+    @Override
+    @Transactional
+    public void liberarReservaDeItems(Long pedidoId, List<PedidoDetalle> detalles) {
+        Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
+        Map<Long, Insumo> insumosPorId = cargarInsumos(totalPorInsumo);
+        for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
+            Insumo insumo = insumosPorId.get(entry.getKey());
+            BigDecimal cantidad = entry.getValue();
+            BigDecimal stockActual = insumo.getStockActual();
+
+            insumo.setStockReservado(insumo.getStockReservado().subtract(cantidad).max(BigDecimal.ZERO));
+            insumoRepository.save(insumo);
+
+            KardexMovimiento mov = new KardexMovimiento();
+            mov.setInsumo(insumo);
+            mov.setTipoMovimiento("LIBERACION_RESERVA");
+            mov.setCantidad(cantidad);
+            mov.setStockAnterior(stockActual);
+            mov.setStockPosterior(stockActual);
+            mov.setCostoUnitario(insumo.getCostoUnitario());
+            mov.setPedidoId(pedidoId);
+            mov.setObservacion("Liberación por cancelación de ítem en pedido #" + pedidoId);
+            kardexRepository.save(mov);
+        }
+    }
+
+    private Map<Long, BigDecimal> calcularTotalPorInsumo(List<PedidoDetalle> detalles) {
+        Map<Long, BigDecimal> totalPorInsumo = new LinkedHashMap<>();
         for (PedidoDetalle detalle : detalles) {
             List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(detalle.getProducto().getId());
-
             if (receta.isEmpty()) {
-                // R5-4: producto sin receta → costo_referencial si es_preparado=false, 0 si es preparado sin receta aún
+                continue;
+            }
+            BigDecimal factor = new BigDecimal(detalle.getCantidad());
+            for (RecetaDetalle rd : receta) {
+                Insumo insumo = rd.getInsumo();
+                totalPorInsumo.merge(insumo.getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
+            }
+        }
+        return totalPorInsumo;
+    }
+
+    private Map<Long, Insumo> cargarInsumos(Map<Long, BigDecimal> totalPorInsumo) {
+        Map<Long, Insumo> insumosPorId = new LinkedHashMap<>();
+        for (Long insumoId : totalPorInsumo.keySet()) {
+            insumoRepository.findById(insumoId).ifPresent(insumo -> insumosPorId.put(insumoId, insumo));
+        }
+        return insumosPorId;
+    }
+
+    private List<InsumoFaltanteDTO> validarDisponibilidadReserva(Map<Long, BigDecimal> totalPorInsumo, Map<Long, Insumo> insumosPorId) {
+        List<InsumoFaltanteDTO> faltantes = new ArrayList<>();
+        for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
+            Insumo insumo = insumosPorId.get(entry.getKey());
+            BigDecimal necesario = entry.getValue();
+            BigDecimal disponible = insumo.getStockActual().subtract(insumo.getStockReservado());
+            if (disponible.compareTo(necesario) < 0) {
+                faltantes.add(new InsumoFaltanteDTO(insumo.getNombre(), disponible.max(BigDecimal.ZERO), necesario));
+            }
+        }
+        return faltantes;
+    }
+
+    private void registrarReservas(Long pedidoId, Map<Long, BigDecimal> totalPorInsumo, Map<Long, Insumo> insumosPorId) {
+        for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
+            Insumo insumo = insumosPorId.get(entry.getKey());
+            BigDecimal cantidad = entry.getValue();
+            BigDecimal stockActual = insumo.getStockActual();
+
+            insumo.setStockReservado(insumo.getStockReservado().add(cantidad));
+            insumoRepository.save(insumo);
+
+            KardexMovimiento mov = new KardexMovimiento();
+            mov.setInsumo(insumo);
+            mov.setTipoMovimiento(TIPO_MOVIMIENTO_RESERVA);
+            mov.setCantidad(cantidad);
+            mov.setStockAnterior(stockActual);
+            mov.setStockPosterior(stockActual);
+            mov.setCostoUnitario(insumo.getCostoUnitario());
+            mov.setPedidoId(pedidoId);
+            mov.setObservacion("Reserva para pedido #" + pedidoId);
+            kardexRepository.save(mov);
+        }
+    }
+
+    private Map<Long, BigDecimal> calcularCostoUnitarioPorDetalle(List<PedidoDetalle> detalles) {
+        Map<Long, BigDecimal> costoUnitarioPorDetalle = new LinkedHashMap<>();
+        for (PedidoDetalle detalle : detalles) {
+            List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(detalle.getProducto().getId());
+            if (receta.isEmpty()) {
                 BigDecimal costoRef = !Boolean.TRUE.equals(detalle.getProducto().getEsPreparado())
                         && detalle.getProducto().getCostoReferencial() != null
                         ? detalle.getProducto().getCostoReferencial()
@@ -390,19 +439,17 @@ public class InventarioServiceImpl implements IInventarioService {
                 continue;
             }
 
-            BigDecimal factor = new BigDecimal(detalle.getCantidad());
             BigDecimal costoUnitarioItem = BigDecimal.ZERO;
             for (RecetaDetalle rd : receta) {
-                Insumo insumo = rd.getInsumo();
-                totalPorInsumo.merge(insumo.getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
-                insumosPorId.put(insumo.getId(), insumo);
-                // Costo snapshot: suma de (cantRequerida × costoUnitario del insumo) para 1 unidad del producto
-                BigDecimal costoInsumo = insumo.getCostoUnitario() != null ? insumo.getCostoUnitario() : BigDecimal.ZERO;
+                BigDecimal costoInsumo = rd.getInsumo().getCostoUnitario() != null ? rd.getInsumo().getCostoUnitario() : BigDecimal.ZERO;
                 costoUnitarioItem = costoUnitarioItem.add(rd.getCantidadRequerida().multiply(costoInsumo));
             }
             costoUnitarioPorDetalle.put(detalle.getId(), costoUnitarioItem);
         }
+        return costoUnitarioPorDetalle;
+    }
 
+    private boolean consumirInsumos(Long pedidoId, Map<Long, BigDecimal> totalPorInsumo, Map<Long, Insumo> insumosPorId) {
         boolean requiereRevision = false;
         for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
             Insumo insumo = insumosPorId.get(entry.getKey());
@@ -432,54 +479,16 @@ public class InventarioServiceImpl implements IInventarioService {
             mov.setObservacion("Consumo de producción para pedido #" + pedidoId);
             kardexRepository.save(mov);
         }
+        return requiereRevision;
+    }
 
-        // R5-1: persistir snapshot de costo en cada ítem (se congela aquí, nunca se recalcula)
+    private void persistirCostoUnitarioConsumido(List<PedidoDetalle> detalles, Map<Long, BigDecimal> costoUnitarioPorDetalle) {
         for (PedidoDetalle detalle : detalles) {
             BigDecimal costo = costoUnitarioPorDetalle.get(detalle.getId());
             if (costo != null) {
                 detalle.setCostoUnitarioConsumido(costo);
                 detalleRepository.save(detalle);
             }
-        }
-
-        return requiereRevision;
-    }
-
-    @Override
-    @Transactional
-    public void liberarReservaDeItems(Long pedidoId, List<PedidoDetalle> detalles) {
-        Map<Long, BigDecimal> totalPorInsumo = new LinkedHashMap<>();
-        Map<Long, Insumo> insumosPorId = new LinkedHashMap<>();
-
-        for (PedidoDetalle detalle : detalles) {
-            List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(detalle.getProducto().getId());
-            if (receta.isEmpty()) continue;
-            BigDecimal factor = new BigDecimal(detalle.getCantidad());
-            for (RecetaDetalle rd : receta) {
-                Insumo insumo = rd.getInsumo();
-                totalPorInsumo.merge(insumo.getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
-                insumosPorId.put(insumo.getId(), insumo);
-            }
-        }
-
-        for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
-            Insumo insumo = insumosPorId.get(entry.getKey());
-            BigDecimal cantidad = entry.getValue();
-            BigDecimal stockActual = insumo.getStockActual();
-
-            insumo.setStockReservado(insumo.getStockReservado().subtract(cantidad).max(BigDecimal.ZERO));
-            insumoRepository.save(insumo);
-
-            KardexMovimiento mov = new KardexMovimiento();
-            mov.setInsumo(insumo);
-            mov.setTipoMovimiento("LIBERACION_RESERVA");
-            mov.setCantidad(cantidad);
-            mov.setStockAnterior(stockActual);
-            mov.setStockPosterior(stockActual);
-            mov.setCostoUnitario(insumo.getCostoUnitario());
-            mov.setPedidoId(pedidoId);
-            mov.setObservacion("Liberación por cancelación de ítem en pedido #" + pedidoId);
-            kardexRepository.save(mov);
         }
     }
 }

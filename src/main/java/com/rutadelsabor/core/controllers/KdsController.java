@@ -39,7 +39,7 @@ public class KdsController {
     @PutMapping("/{id}/preparando")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
     public ResponseEntity<String> marcarPreparando(@PathVariable Long id, Authentication auth) {
-        UserDetailsImpl cocinero = (UserDetailsImpl) auth.getPrincipal();
+        UserDetailsImpl cocinero = obtenerUsuarioAutenticado(auth);
         kdsService.marcarPreparando(id, cocinero.getUsuarioId());
         return ResponseEntity.ok("Plato en preparación. Stock descontado del Kardex.");
     }
@@ -88,14 +88,25 @@ public class KdsController {
      * Acepta ?token= como fallback para EventSource (que no puede enviar headers).
      *
      * Eventos emitidos al tenant:
-     *   NUEVO_PEDIDO      → mozo confirma pedido (BORRADOR → RECIBIDO)
-     *   EN_PREPARACION    → cocina inicia preparación
-     *   PEDIDO_LISTO      → cocina marca plato listo (t=0 → al mozo creador)
-     *   AVISO_PEDIDO_LISTO → escalación server-side (t=1min mozos, t=2min cajeros, t=5min gerentes)
+     * NUEVO_PEDIDO       → mozo confirma pedido (BORRADOR → RECIBIDO)
+     * EN_PREPARACION     → cocina inicia preparación
+     * PEDIDO_LISTO       → cocina marca plato listo (t=0 → al mozo creador)
+     * AVISO_PEDIDO_LISTO → escalación server-side (t=1min mozos, t=2min cajeros, t=5min gerentes)
      */
     @GetMapping(value = "/eventos", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter suscribirEventos(Authentication auth) {
-        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        UserDetailsImpl user = obtenerUsuarioAutenticado(auth);
         return sseEmitterManager.suscribir(user.getEmpresaId(), user.getUsuarioId(), user.getRol());
+    }
+
+    /**
+     * Método auxiliar para asegurar que el Authentication no sea nulo 
+     * y extraer el UserDetailsImpl de forma segura, resolviendo java:S2259.
+     */
+    private UserDetailsImpl obtenerUsuarioAutenticado(Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl userDetails)) {
+            throw new IllegalStateException("No se pudo obtener la identidad del usuario autenticado");
+        }
+        return userDetails;
     }
 }

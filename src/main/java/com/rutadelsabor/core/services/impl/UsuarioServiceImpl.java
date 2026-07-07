@@ -33,8 +33,7 @@ public class UsuarioServiceImpl implements IUsuarioService {
     @Override
     @Transactional(readOnly = true)
     public Usuario obtenerUsuario(Long id) {
-        return usuarioRepository.findById(id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado con ID: " + id));
+        return buscarUsuarioPorId(id);
     }
 
     @Override
@@ -60,7 +59,7 @@ public class UsuarioServiceImpl implements IUsuarioService {
     @Override
     @Transactional
     public Usuario actualizarUsuario(Long id, UsuarioRequestDTO dto) {
-        Usuario usuario = obtenerUsuario(id);
+        Usuario usuario = buscarUsuarioPorId(id);
         if (!usuario.getCorreo().equalsIgnoreCase(dto.getCorreo())
                 && usuarioRepository.existsByCorreo(dto.getCorreo())) {
             throw new ReglaNegocioException("Ya existe un usuario registrado con el correo: " + dto.getCorreo());
@@ -80,7 +79,7 @@ public class UsuarioServiceImpl implements IUsuarioService {
     @Override
     @Transactional
     public void desactivarUsuario(Long id) {
-        Usuario usuario = obtenerUsuario(id);
+        Usuario usuario = buscarUsuarioPorId(id);
         usuario.setEstadoRegistro(false);
         usuarioRepository.save(usuario);
     }
@@ -91,7 +90,7 @@ public class UsuarioServiceImpl implements IUsuarioService {
         if (nuevaPassword == null || nuevaPassword.isBlank() || nuevaPassword.length() < 8) {
             throw new ReglaNegocioException("La contraseña debe tener mínimo 8 caracteres.");
         }
-        Usuario usuario = obtenerUsuario(id);
+        Usuario usuario = buscarUsuarioPorId(id);
         usuario.setPasswordHash(passwordEncoder.encode(nuevaPassword));
         usuarioRepository.save(usuario);
     }
@@ -99,11 +98,16 @@ public class UsuarioServiceImpl implements IUsuarioService {
     @Override
     @Transactional
     public void cambiarPassword(Long id, CambiarPasswordDTO dto) {
-        Usuario usuario = obtenerUsuario(id);
+        Usuario usuario = buscarUsuarioPorId(id);
         if (!passwordEncoder.matches(dto.getPasswordActual(), usuario.getPasswordHash())) {
             throw new ReglaNegocioException("La contraseña actual no es correcta.");
         }
         usuario.setPasswordHash(passwordEncoder.encode(dto.getPasswordNueva()));
         usuarioRepository.save(usuario);
+    }
+
+    private Usuario buscarUsuarioPorId(Long id) {
+        return usuarioRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado con ID: " + id));
     }
 }

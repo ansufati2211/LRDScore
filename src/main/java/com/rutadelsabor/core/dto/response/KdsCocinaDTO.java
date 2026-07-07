@@ -2,7 +2,7 @@ package com.rutadelsabor.core.dto.response;
 
 import lombok.Getter;
 import lombok.Setter;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -14,7 +14,7 @@ public class KdsCocinaDTO {
     private Integer cantidad;
     private String estadoPedido;
     private String notasPreparacion;
-    private Date fechaPedido;
+    private LocalDateTime fechaPedido;
     
     // Estos campos adicionales pueden ser útiles más adelante cuando conectes el frontend
     private String tiempoEsperaTranscurrido; 

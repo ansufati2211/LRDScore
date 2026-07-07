@@ -6,7 +6,9 @@ import java.util.List;
 
 public class StockInsuficienteException extends RuntimeException {
 
-    private final List<InsumoFaltanteDTO> faltantes;
+    private static final long serialVersionUID = 1L;
+
+    private final transient List<InsumoFaltanteDTO> faltantes;
 
     public StockInsuficienteException(List<InsumoFaltanteDTO> faltantes) {
         super("Stock insuficiente para " + faltantes.size() + " insumo(s)");

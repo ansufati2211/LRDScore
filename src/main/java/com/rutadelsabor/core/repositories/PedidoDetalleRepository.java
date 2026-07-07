@@ -6,12 +6,12 @@ import com.rutadelsabor.core.models.enums.EstadoPedido;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Repository
+
 public interface PedidoDetalleRepository extends JpaRepository<PedidoDetalle, Long> {
 
     // Módulo 5 — R5-2/R5-3: ítems vendidos con costo snapshot en pedidos PAGADO del período

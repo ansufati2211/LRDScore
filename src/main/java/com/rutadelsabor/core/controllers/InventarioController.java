@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
+import com.rutadelsabor.core.dto.request.CategoriaRequestDTO;
 import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
 import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
 import com.rutadelsabor.core.dto.request.MermaRequestDTO;
@@ -40,7 +41,11 @@ public class InventarioController {
 
     @PostMapping("/categorias")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<Categoria> crearCategoria(@RequestBody Categoria categoria) {
+    public ResponseEntity<Categoria> crearCategoria(@RequestBody CategoriaRequestDTO dto) {
+        // Solución java:S4684 - Se recibe el DTO y se transfiere a la entidad
+        Categoria categoria = new Categoria();
+        categoria.setNombre(dto.getNombre());
+        
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearCategoria(categoria));
     }
 
@@ -54,7 +59,20 @@ public class InventarioController {
 
     @PostMapping("/productos")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<Producto> crearProducto(@RequestBody Producto producto) {
+    public ResponseEntity<Producto> crearProducto(@RequestBody ProductoRequestDTO dto) {
+        // Solución java:S4684 - Se mapea el DTO a la entidad
+        Producto producto = new Producto();
+        producto.setNombre(dto.getNombre());
+        producto.setPrecioVenta(dto.getPrecioVenta());
+        producto.setTagsBusqueda(dto.getTagsBusqueda());
+        
+        // Se enlaza la categoría si viene en el DTO
+        if (dto.getCategoriaId() != null) {
+            Categoria categoria = new Categoria();
+            categoria.setId(dto.getCategoriaId());
+            producto.setCategoria(categoria);
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearProducto(producto));
     }
 
@@ -81,7 +99,13 @@ public class InventarioController {
 
     @PostMapping("/insumos")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<Insumo> crearInsumo(@RequestBody Insumo insumo) {
+    public ResponseEntity<Insumo> crearInsumo(@RequestBody InsumoRequestDTO dto) {
+        // Solución java:S4684 - Se mapea el DTO a la entidad
+        Insumo insumo = new Insumo();
+        insumo.setNombre(dto.getNombre());
+        insumo.setUnidadMedida(dto.getUnidadMedida());
+        insumo.setStockMinimo(dto.getStockMinimo());
+        
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearInsumo(insumo));
     }
 

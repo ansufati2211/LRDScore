@@ -57,7 +57,7 @@ public class CajaServiceImpl implements ICajaService {
         sesion.setCajero(cajero);
         sesion.setMontoInicial(montoInicial);
         sesion.setEstado(EstadoCaja.ABIERTA);
-        sesion.setFechaApertura(LocalDateTime.now());
+        sesion.setFechaApertura(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
 
         return cajaRepository.save(sesion);
     }
@@ -78,7 +78,7 @@ public class CajaServiceImpl implements ICajaService {
         sesion.setMontoFinalCalculado(sesion.getMontoInicial().add(totalEfectivo));
 
         sesion.setEstado(EstadoCaja.CERRADA);
-        sesion.setFechaCierre(LocalDateTime.now());
+        sesion.setFechaCierre(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
         sesion.setMontoFinalDeclarado(montoFinalDeclarado);
 
         SesionCaja sesionCerrada = cajaRepository.save(sesion);

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -49,8 +49,8 @@ class KdsControllerSecurityTest {
     @MockitoBean ModuloInterceptor moduloInterceptor;
     @MockitoBean SuscripcionRepository suscripcionRepository;
 
-    @BeforeEach
-    void setup() throws Exception {
+   @BeforeEach
+    void setup() { // <-- Cambio aquí: se eliminó 'throws Exception'
         when(tenantInterceptor.preHandle(any(HttpServletRequest.class), any(HttpServletResponse.class), any()))
                 .thenReturn(true);
         when(moduloInterceptor.preHandle(any(HttpServletRequest.class), any(HttpServletResponse.class), any()))

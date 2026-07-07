@@ -5,11 +5,10 @@ import com.rutadelsabor.core.models.enums.MetodoPago;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+
 
 import java.math.BigDecimal;
 
-@Repository
 public interface TransaccionPagoRepository extends JpaRepository<TransaccionPago, Long> {
 
     // Suma solo los pagos en EFECTIVO de una sesión — dinero físico que entra a la caja

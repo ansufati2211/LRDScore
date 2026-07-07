@@ -14,7 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Las pruebas "bloqueado" verifican exactamente 403.
  * Las pruebas "permitido" verifican que la respuesta NO sea 403 (la capa de autorización pasó).
  */
+@SuppressWarnings("unused")
 @WebMvcTest(PedidoController.class)
 @DisplayName("PedidoController — Matriz de autorización por rol")
 class PedidoControllerSecurityTest {
@@ -60,9 +61,8 @@ class PedidoControllerSecurityTest {
 
     // SuscripcionRepository: requerido si ModuloInterceptor real es instanciado en algún contexto
     @MockitoBean SuscripcionRepository suscripcionRepository;
-
-    @BeforeEach
-    void setupInterceptors() throws Exception {
+@BeforeEach
+    void setupInterceptors() { // <-- Cambio aquí: se eliminó 'throws Exception'
         when(tenantInterceptor.preHandle(any(HttpServletRequest.class), any(HttpServletResponse.class), any()))
                 .thenReturn(true);
         when(moduloInterceptor.preHandle(any(HttpServletRequest.class), any(HttpServletResponse.class), any()))

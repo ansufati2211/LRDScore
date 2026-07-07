@@ -23,13 +23,18 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class KdsServiceImpl implements IKdsService {
 
     private static final String KEY_PEDIDO_ID = "pedidoId";
     private static final String KEY_NUMERO_ORDEN = "numeroOrden";
+    private static final String KEY_ESTADO = "estado";
+    private static final String KEY_PRODUCTO_ID = "productoId";
+    private static final String KEY_NOMBRE = "nombre";
+    private static final String MSG_NO_ENCONTRADO = " no encontrado";
+    private static final String PREFIX_PEDIDO = "Pedido con ID ";
+    private static final String PREFIX_PRODUCTO = "Producto ";
 
     private final VwKdsCocinaRepository kdsRepository;
     private final PedidoRepository pedidoRepository;
@@ -62,7 +67,7 @@ public class KdsServiceImpl implements IKdsService {
     @Transactional
     public void marcarPreparando(Long pedidoId, Long usuarioId) {
         Pedido pedido = pedidoRepository.findById(pedidoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Pedido con ID " + pedidoId + " no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException(PREFIX_PEDIDO + pedidoId + MSG_NO_ENCONTRADO));
 
         if (pedido.getEstadoActual() == EstadoPedido.PAGADO || pedido.getEstadoActual() == EstadoPedido.CANCELADO) {
             throw new ReglaNegocioException("No se puede iniciar preparación en un pedido " + pedido.getEstadoActual() + ".");
@@ -70,7 +75,7 @@ public class KdsServiceImpl implements IKdsService {
 
         List<PedidoDetalle> itemsPendientes = pedido.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() == EstadoItem.PENDIENTE)
-                .collect(Collectors.toList());
+            .toList();
 
         if (itemsPendientes.isEmpty()) {
             throw new ReglaNegocioException("No hay ítems pendientes para iniciar preparación.");
@@ -85,9 +90,10 @@ public class KdsServiceImpl implements IKdsService {
 
         if (requiereRevision) {
             pedido.setRequiereRevision(true);
+            // Corrección java:S2154 -> Casteo explícito a (Object) en pedidoId
             sseEmitterManager.publicarPorRol(empresaId, "ROLE_GERENTE", "PEDIDO_REQUIERE_REVISION", Map.of(
                     KEY_PEDIDO_ID, pedidoId,
-                    KEY_NUMERO_ORDEN, pedido.getNumeroOrden() != null ? pedido.getNumeroOrden() : pedidoId,
+                    KEY_NUMERO_ORDEN, pedido.getNumeroOrden() != null ? pedido.getNumeroOrden() : (Object) pedidoId,
                     "mensaje", "Stock insuficiente detectado al iniciar preparación"
             ));
         }
@@ -95,7 +101,7 @@ public class KdsServiceImpl implements IKdsService {
 
         sseEmitterManager.publicarTenant(empresaId, "EN_PREPARACION", Map.of(
                 KEY_PEDIDO_ID, pedidoId,
-                "estado", "EN_PREPARACION"
+            KEY_ESTADO, "EN_PREPARACION"
         ));
     }
 
@@ -103,11 +109,11 @@ public class KdsServiceImpl implements IKdsService {
     @Transactional
     public void marcarListo(Long pedidoId) {
         Pedido pedido = pedidoRepository.findById(pedidoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Pedido con ID " + pedidoId + " no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException(PREFIX_PEDIDO + pedidoId + MSG_NO_ENCONTRADO));
 
         List<PedidoDetalle> itemsEnPreparacion = pedido.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() == EstadoItem.EN_PREPARACION)
-                .collect(Collectors.toList());
+            .toList();
 
         if (itemsEnPreparacion.isEmpty()) {
             throw new ReglaNegocioException("No hay ítems en preparación para marcar como listos.");
@@ -123,10 +129,10 @@ public class KdsServiceImpl implements IKdsService {
                 ? pedido.getIdentificadorMesaReferencia() : "";
         Map<String, Object> payload = Map.of(
                 KEY_PEDIDO_ID, pedidoId,
-                KEY_NUMERO_ORDEN, pedido.getNumeroOrden() != null ? pedido.getNumeroOrden() : pedidoId,
+            KEY_NUMERO_ORDEN, pedido.getNumeroOrden() != null ? pedido.getNumeroOrden() : (Object) pedidoId,
                 "mesa", mesa,
                 "tipoConsumo", pedido.getTipoConsumo() != null ? pedido.getTipoConsumo() : "",
-                "estado", "LISTO"
+            KEY_ESTADO, "LISTO"
         );
 
         sseEmitterManager.publicarUsuario(empresaId, mozoId, "PEDIDO_LISTO", payload);
@@ -138,14 +144,14 @@ public class KdsServiceImpl implements IKdsService {
     @Transactional
     public void marcarAgotadoTemporal(Long productoId) {
         Producto producto = productoRepository.findById(productoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Producto " + productoId + " no encontrado"));
+            .orElseThrow(() -> new RecursoNoEncontradoException(PREFIX_PRODUCTO + productoId + MSG_NO_ENCONTRADO));
         producto.setEstadoDisponibilidad(EstadoDisponibilidad.AGOTADO_TEMPORAL);
         productoRepository.save(producto);
         // R6-4: propagar a la pantalla del mozo en tiempo real
         sseEmitterManager.publicarTenant(TenantContext.getCurrentTenant(), "PRODUCTO_AGOTADO", Map.of(
-                "productoId", productoId,
-                "nombre", producto.getNombre(),
-                "estado", "AGOTADO_TEMPORAL"
+            KEY_PRODUCTO_ID, productoId,
+            KEY_NOMBRE, producto.getNombre(),
+            KEY_ESTADO, "AGOTADO_TEMPORAL"
         ));
     }
 
@@ -154,14 +160,14 @@ public class KdsServiceImpl implements IKdsService {
     @Transactional
     public void marcarAgotadoServicio(Long productoId) {
         Producto producto = productoRepository.findById(productoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Producto " + productoId + " no encontrado"));
+            .orElseThrow(() -> new RecursoNoEncontradoException(PREFIX_PRODUCTO + productoId + MSG_NO_ENCONTRADO));
         producto.setEstadoDisponibilidad(EstadoDisponibilidad.AGOTADO_SERVICIO);
         productoRepository.save(producto);
         // R6-4: propagar a la pantalla del mozo en tiempo real
         sseEmitterManager.publicarTenant(TenantContext.getCurrentTenant(), "PRODUCTO_AGOTADO", Map.of(
-                "productoId", productoId,
-                "nombre", producto.getNombre(),
-                "estado", "AGOTADO_SERVICIO"
+            KEY_PRODUCTO_ID, productoId,
+            KEY_NOMBRE, producto.getNombre(),
+            KEY_ESTADO, "AGOTADO_SERVICIO"
         ));
     }
 
@@ -170,7 +176,7 @@ public class KdsServiceImpl implements IKdsService {
     @Transactional
     public void revertirDisponible(Long productoId) {
         Producto producto = productoRepository.findById(productoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Producto " + productoId + " no encontrado"));
+            .orElseThrow(() -> new RecursoNoEncontradoException(PREFIX_PRODUCTO + productoId + MSG_NO_ENCONTRADO));
         if (producto.getEstadoDisponibilidad() == EstadoDisponibilidad.AGOTADO_SERVICIO) {
             throw new ReglaNegocioException(
                     "AGOTADO_SERVICIO no puede revertirse manualmente. Se restablece automáticamente en el cierre de caja.");
@@ -179,12 +185,13 @@ public class KdsServiceImpl implements IKdsService {
         productoRepository.save(producto);
         // R6-4: notificar al mozo que el producto vuelve a estar disponible
         sseEmitterManager.publicarTenant(TenantContext.getCurrentTenant(), "PRODUCTO_DISPONIBLE", Map.of(
-                "productoId", productoId,
-                "nombre", producto.getNombre()
+            KEY_PRODUCTO_ID, productoId,
+            KEY_NOMBRE, producto.getNombre()
         ));
     }
 
     // R6-5: porciones disponibles = min(stockDisponible / cantRequerida) por receta
+    // Corrección java:S3776 -> Se extrajo la lógica de cálculo a un método privado para reducir la complejidad cognitiva
     @Override
     @Transactional(readOnly = true)
     public List<PorcionDisponibleDTO> calcularPorcionesDisponibles() {
@@ -198,30 +205,32 @@ public class KdsServiceImpl implements IKdsService {
             dto.setProductoId(producto.getId());
             dto.setProducto(producto.getNombre());
             dto.setEstadoDisponibilidad(producto.getEstadoDisponibilidad().name());
-
-            if (receta.isEmpty()) {
-                dto.setPorcionesDisponibles(null);
-            } else {
-                BigDecimal minPorciones = null;
-                for (RecetaDetalle rd : receta) {
-                    if (rd.getCantidadRequerida().compareTo(BigDecimal.ZERO) == 0) continue;
-                    BigDecimal porciones = rd.getInsumo().getStockDisponible()
-                            .divide(rd.getCantidadRequerida(), 2, RoundingMode.FLOOR);
-                    if (minPorciones == null || porciones.compareTo(minPorciones) < 0) {
-                        minPorciones = porciones;
-                    }
-                }
-                dto.setPorcionesDisponibles(minPorciones);
-            }
+            
+            dto.setPorcionesDisponibles(calcularMinimoPorciones(receta));
             resultado.add(dto);
         }
         return resultado;
     }
 
+    /**
+     * Método auxiliar para calcular el mínimo de porciones basado en los requerimientos de la receta.
+     */
+    private BigDecimal calcularMinimoPorciones(List<RecetaDetalle> receta) {
+        if (receta == null || receta.isEmpty()) {
+            return null;
+        }
+
+        return receta.stream()
+                .filter(rd -> rd.getCantidadRequerida().compareTo(BigDecimal.ZERO) > 0)
+                .map(rd -> rd.getInsumo().getStockDisponible().divide(rd.getCantidadRequerida(), 2, RoundingMode.FLOOR))
+                .min(BigDecimal::compareTo)
+                .orElse(null);
+    }
+
     private static EstadoPedido calcularEstadoAgregado(List<PedidoDetalle> detalles) {
         List<PedidoDetalle> activos = detalles.stream()
                 .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
-                .collect(Collectors.toList());
+            .toList();
         if (activos.isEmpty()) return EstadoPedido.CANCELADO;
         if (activos.stream().anyMatch(d -> d.getEstadoItem() == EstadoItem.EN_PREPARACION)) return EstadoPedido.EN_PREPARACION;
         if (activos.stream().anyMatch(d -> d.getEstadoItem() == EstadoItem.PENDIENTE))      return EstadoPedido.RECIBIDO;

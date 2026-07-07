@@ -26,28 +26,13 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(tenantInterceptor).addPathPatterns("/api/**");
-        // R0-4: ModuloInterceptor evalúa @RequiereModulo después del JWT filter
         registry.addInterceptor(moduloInterceptor).addPathPatterns("/api/**");
     }
 
-    /* * COMENTADO: Spring Security intercepta antes que WebMvcConfigurer. 
-     * Se reemplaza por el Bean CorsConfigurationSource de abajo para que funcione globalmente.
-     * * @Override
-     * public void addCorsMappings(CorsRegistry registry) {
-     * registry.addMapping("/**")
-     * .allowedOrigins("http://localhost:3000", "http://localhost:5173", "https://larutadelsabor-frontend.vercel.app")
-     * .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
-     * .allowedHeaders("Authorization", "Content-Type", "X-Empresa-ID", "Accept")
-     * .allowCredentials(true);
-     * }
-     */
-
-    // Nuevo Bean que Spring Security detectará automáticamente
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         
-        // ¡CAMBIO CLAVE! Acepta cualquier puerto local de desarrollo
         config.setAllowedOriginPatterns(Arrays.asList(
                 "http://localhost:*", 
                 "http://127.0.0.1:*",

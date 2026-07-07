@@ -26,12 +26,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
 public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
 
     private static final BigDecimal IGV_DIVISOR = new BigDecimal("1.18");
+    private static final ZoneId ZONA_HORARIA = ZoneId.of("America/Lima");
+    private static final String NO_ENCONTRADO = " no encontrado";
 
     private final DocumentoVentaRepository documentoVentaRepository;
     private final PedidoRepository pedidoRepository;
@@ -111,20 +114,20 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
         doc.setIgv(igv);
         doc.setTotal(total);
         doc.setEstadoEmision(EstadoEmision.EMITIDO);
-        doc.setFechaEmision(LocalDateTime.now());
+        doc.setFechaEmision(LocalDateTime.now(ZONA_HORARIA));
         doc.setTipoDocumentoReceptor(dto.getTipoDocumentoReceptor());
         doc.setNumeroDocumentoReceptor(dto.getNumeroDocumentoReceptor());
         doc.setRazonSocialReceptor(dto.getRazonSocialReceptor());
 
         if (dto.getPedidoId() != null) {
             Pedido pedido = pedidoRepository.findById(dto.getPedidoId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Pedido " + dto.getPedidoId() + " no encontrado"));
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Pedido " + dto.getPedidoId() + NO_ENCONTRADO));
             doc.setPedido(pedido);
         }
 
         if (dto.getDocumentoCobroId() != null) {
             DocumentoCobro docCobro = documentoCobroRepository.findById(dto.getDocumentoCobroId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro " + dto.getDocumentoCobroId() + " no encontrado"));
+                    .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro " + dto.getDocumentoCobroId() + NO_ENCONTRADO));
             doc.setDocumentoCobro(docCobro);
         }
 
@@ -135,7 +138,7 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
     @Transactional
     public DocumentoVentaResponseDTO anular(Long documentoId, AnularDocumentoVentaRequestDTO dto) {
         DocumentoVenta doc = documentoVentaRepository.findById(documentoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + " no encontrado"));
+            .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO));
 
         if (doc.getEstadoEmision() == EstadoEmision.ANULADO) {
             throw new ReglaNegocioException("El comprobante ya está anulado.");
@@ -156,7 +159,7 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
     @Transactional(readOnly = true)
     public DocumentoVentaResponseDTO obtenerPorId(Long documentoId) {
         return mapToDTO(documentoVentaRepository.findById(documentoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + " no encontrado")));
+            .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO)));
     }
 
     @Override
@@ -196,11 +199,11 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
     private BigDecimal resolverTotal(EmitirDocumentoVentaRequestDTO dto) {
         if (dto.getDocumentoCobroId() != null) {
             DocumentoCobro docCobro = documentoCobroRepository.findById(dto.getDocumentoCobroId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro " + dto.getDocumentoCobroId() + " no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro " + dto.getDocumentoCobroId() + NO_ENCONTRADO));
             return docCobro.getTotal();
         }
         Pedido pedido = pedidoRepository.findById(dto.getPedidoId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Pedido " + dto.getPedidoId() + " no encontrado"));
+            .orElseThrow(() -> new RecursoNoEncontradoException("Pedido " + dto.getPedidoId() + NO_ENCONTRADO));
         return pedido.getTotal();
     }
 

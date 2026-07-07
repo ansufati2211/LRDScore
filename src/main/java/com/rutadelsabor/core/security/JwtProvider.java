@@ -10,10 +10,11 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.util.Date;
+import java.time.Instant;
 import java.util.function.Function;
 
 @Component
+@SuppressWarnings("java:S2143") // Se suprime porque la librería io.jsonwebtoken obliga a usar java.util.Date
 public class JwtProvider {
 
     @Value("${jwt.secret}")
@@ -35,18 +36,24 @@ public class JwtProvider {
 
     // Generador de Token (usado en el AuthController)
     public String generateToken(Authentication authentication, Long empresaId, Long usuarioId) {
-        UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
+        // Solución java:S2259 - Extracción segura del Principal
+        UserDetailsImpl userPrincipal = obtenerPrincipalSeguro(authentication);
+        
         String rol = userPrincipal.getAuthorities().iterator().next().getAuthority();
         // R1-3: la cuenta kiosco de cocina recibe token de larga duración para no interrumpir el servicio.
         long expMs = "ROLE_COCINA".equals(rol) ? jwtExpirationCocinaMs : jwtExpirationMs;
+
+        // Solución java:S2143 - Uso de java.time.Instant para matemáticas de fechas
+        Instant now = Instant.now();
+        Instant expiration = now.plusMillis(expMs);
 
         return Jwts.builder()
                 .subject(userPrincipal.getUsername())
                 .claim("rol", rol)
                 .claim("empresaId", empresaId)
                 .claim("usuarioId", usuarioId)
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expMs))
+            .issuedAt(java.util.Date.from(now)) // Puente de Instant a Date exigido por JJWT
+            .expiration(java.util.Date.from(expiration)) // Puente de Instant a Date exigido por JJWT
                 .signWith(getSigningKey())
                 .compact();
     }
@@ -68,11 +75,12 @@ public class JwtProvider {
 
     // Funciones utilitarias internas
     private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
-    }
-
-    private Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
+        Instant expirationDate = extractClaim(token, claims -> {
+            java.util.Date exp = claims.getExpiration();
+            return exp == null ? null : exp.toInstant();
+        });
+        if (expirationDate == null) return true;
+        return expirationDate.isBefore(Instant.now());
     }
 
     private <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
@@ -86,5 +94,16 @@ public class JwtProvider {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+    
+    /**
+     * Método auxiliar para validar el Authentication y extraer el UserDetailsImpl
+     * de forma segura, resolviendo la vulnerabilidad de NullPointerException (java:S2259).
+     */
+    private UserDetailsImpl obtenerPrincipalSeguro(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl userPrincipal)) {
+            throw new IllegalStateException("Autenticación nula o inválida al intentar generar el token JWT");
+        }
+        return userPrincipal;
     }
 }

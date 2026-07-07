@@ -6,7 +6,8 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>4.0.6</version>
-        <relativePath/> </parent>
+        <relativePath/> 
+    </parent>
     <groupId>com.rutadelsabor</groupId>
     <artifactId>core</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -47,9 +48,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+
+        <!-- Renombrado en Spring Boot 4.0: spring-boot-starter-web -> spring-boot-starter-webmvc -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId> </dependency>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -91,17 +95,29 @@
             <version>5.2.5</version>
         </dependency>
 
+        <!-- spring-boot-starter-test se mantiene para JUnit/Mockito/AssertJ genéricos -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- NUEVO (Spring Boot 4.0): starter de test modular para MVC.
+             Trae @WebMvcTest, MockMvc, etc. desde org.springframework.boot.webmvc.test.autoconfigure -->
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
-      
+
+        <!-- NUEVO (Spring Boot 4.0): reemplaza a spring-security-test suelto.
+             Requerido para que @WithMockUser / @WithUserDetails funcionen correctamente -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>

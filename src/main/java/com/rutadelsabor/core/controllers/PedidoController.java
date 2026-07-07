@@ -69,8 +69,8 @@ public class PedidoController {
             @PathVariable Long id, 
             @RequestBody PagoRequestDTO pago, 
             Authentication auth) {
-        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
-        pedidoService.procesarPago(id, pago, cajero.getUsuarioId());
+        Long cajeroId = obtenerUsuarioIdAutenticado(auth);
+        pedidoService.procesarPago(id, pago, cajeroId);
         return ResponseEntity.ok("Pago registrado exitosamente.");
     }
 
@@ -174,7 +174,18 @@ public class PedidoController {
             @PathVariable Long documentoId,
             @RequestBody PagoRequestDTO pago,
             Authentication auth) {
-        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
-        return ResponseEntity.ok(pedidoService.pagarDocumentoCobro(documentoId, pago, cajero.getUsuarioId()));
+        Long cajeroId = obtenerUsuarioIdAutenticado(auth);
+        return ResponseEntity.ok(pedidoService.pagarDocumentoCobro(documentoId, pago, cajeroId));
+    }
+
+    /**
+     * Método auxiliar para validar el Authentication y extraer el ID del usuario
+     * de forma segura, resolviendo java:S2259.
+     */
+    private Long obtenerUsuarioIdAutenticado(Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl cajero)) {
+            throw new IllegalStateException("No se pudo obtener la identidad del usuario autenticado");
+        }
+        return cajero.getUsuarioId();
     }
 }
