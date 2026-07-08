@@ -42,11 +42,22 @@ public class InventarioController {
     @PostMapping("/categorias")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<Categoria> crearCategoria(@RequestBody CategoriaRequestDTO dto) {
-        // Solución java:S4684 - Se recibe el DTO y se transfiere a la entidad
         Categoria categoria = new Categoria();
         categoria.setNombre(dto.getNombre());
-        
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearCategoria(categoria));
+    }
+
+    @PutMapping("/categorias/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<Categoria> actualizarCategoria(@PathVariable Long id, @RequestBody CategoriaRequestDTO dto) {
+        return ResponseEntity.ok(inventarioService.actualizarCategoria(id, dto));
+    }
+
+    @DeleteMapping("/categorias/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    public ResponseEntity<String> desactivarCategoria(@PathVariable Long id) {
+        inventarioService.desactivarCategoria(id);
+        return ResponseEntity.ok("Categoría desactivada exitosamente.");
     }
 
     // ─── PRODUCTOS ────────────────────────────────────────────────────────────
@@ -60,18 +71,22 @@ public class InventarioController {
     @PostMapping("/productos")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<Producto> crearProducto(@RequestBody ProductoRequestDTO dto) {
-        // Solución java:S4684 - Se mapea el DTO a la entidad
         Producto producto = new Producto();
         producto.setNombre(dto.getNombre());
         producto.setPrecioVenta(dto.getPrecioVenta());
         producto.setTagsBusqueda(dto.getTagsBusqueda());
         
-        // Se enlaza la categoría si viene en el DTO
         if (dto.getCategoriaId() != null) {
             Categoria categoria = new Categoria();
             categoria.setId(dto.getCategoriaId());
             producto.setCategoria(categoria);
         }
+        if (dto.getEsPreparado() != null) {
+    producto.setEsPreparado(dto.getEsPreparado());
+}
+if (dto.getTiempoPreparacionMinutos() != null) {
+    producto.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos());
+}
 
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearProducto(producto));
     }
@@ -100,7 +115,6 @@ public class InventarioController {
     @PostMapping("/insumos")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<Insumo> crearInsumo(@RequestBody InsumoRequestDTO dto) {
-        // Solución java:S4684 - Se mapea el DTO a la entidad
         Insumo insumo = new Insumo();
         insumo.setNombre(dto.getNombre());
         insumo.setUnidadMedida(dto.getUnidadMedida());
@@ -158,14 +172,14 @@ public class InventarioController {
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> registrarEntrada(@RequestBody EntradaAlmacenRequestDTO dto, Authentication auth) {
         inventarioService.registrarEntrada(dto, obtenerUsuarioAuth(auth));
-        return ResponseEntity.ok("Entrada registrada y Kardex actualizado (Promedio Ponderado recalculado).");
+        return ResponseEntity.ok("Entrada registrada y Kardex actualizado.");
     }
 
     @PostMapping("/mermas")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
     public ResponseEntity<String> registrarMerma(@RequestBody MermaRequestDTO dto, Authentication auth) {
         inventarioService.registrarMerma(dto, obtenerUsuarioAuth(auth));
-        return ResponseEntity.ok("Merma registrada y stock descontado exitosamente.");
+        return ResponseEntity.ok("Merma registrada y stock descontado.");
     }
 
     @PostMapping("/ajustes")
@@ -177,6 +191,20 @@ public class InventarioController {
 
     private Usuario obtenerUsuarioAuth(Authentication auth) {
         return usuarioRepository.findByCorreo(auth.getName())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado en el sistema"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
     }
+
+    @PutMapping("/categorias/{id}/activar")
+@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+public ResponseEntity<String> activarCategoria(@PathVariable Long id) {
+    inventarioService.activarCategoria(id);
+    return ResponseEntity.ok("Categoría activada exitosamente.");
+}
+
+@PutMapping("/productos/{id}/activar")
+@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+public ResponseEntity<String> activarProducto(@PathVariable Long id) {
+    inventarioService.activarProducto(id);
+    return ResponseEntity.ok("Producto activado exitosamente.");
+}
 }

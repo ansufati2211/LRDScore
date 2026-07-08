@@ -11,4 +11,6 @@ public class ProductoRequestDTO {
     private String nombre;
     private BigDecimal precioVenta;
     private String tagsBusqueda;
+    private Boolean esPreparado;
+private Integer tiempoPreparacionMinutos;
 }

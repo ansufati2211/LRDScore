@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.services.impl;
 
 import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
+import com.rutadelsabor.core.dto.request.CategoriaRequestDTO;
 import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
 import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
 import com.rutadelsabor.core.dto.request.MermaRequestDTO;
@@ -49,17 +50,47 @@ public class InventarioServiceImpl implements IInventarioService {
         this.detalleRepository = detalleRepository;
     }
 
+    // --- CATEGORIAS ---
+
     @Override
     @Transactional
-    public Categoria crearCategoria(Categoria categoria) { return categoriaRepository.save(categoria); }
+    public Categoria crearCategoria(Categoria categoria) { 
+        return categoriaRepository.save(categoria); 
+    }
+
+    @Override
+    @Transactional
+    public Categoria actualizarCategoria(Long id, CategoriaRequestDTO dto) {
+        Categoria categoria = categoriaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada con ID: " + id));
+        if (dto.getNombre() != null && !dto.getNombre().isBlank()) {
+            categoria.setNombre(dto.getNombre());
+        }
+        return categoriaRepository.save(categoria);
+    }
+
+    @Override
+    @Transactional
+    public void desactivarCategoria(Long id) {
+        Categoria categoria = categoriaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada con ID: " + id));
+        categoria.setEstadoRegistro(false);
+        categoriaRepository.save(categoria);
+    }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Categoria> listarCategorias() { return categoriaRepository.findAll(); }
+    public List<Categoria> listarCategorias() { 
+        return categoriaRepository.findAll(); 
+    }
+
+    // --- INSUMOS ---
 
     @Override
     @Transactional
-    public Insumo crearInsumo(Insumo insumo) { return insumoRepository.save(insumo); }
+    public Insumo crearInsumo(Insumo insumo) { 
+        return insumoRepository.save(insumo); 
+    }
 
     @Override
     @Transactional
@@ -89,15 +120,23 @@ public class InventarioServiceImpl implements IInventarioService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<Insumo> listarInsumos() { return insumoRepository.findAll(); }
+    public List<Insumo> listarInsumos() { 
+        return insumoRepository.findAll(); 
+    }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Insumo> listarInsumosConStockBajo() { return insumoRepository.findInsumosConStockBajo(); }
+    public List<Insumo> listarInsumosConStockBajo() { 
+        return insumoRepository.findInsumosConStockBajo(); 
+    }
+
+    // --- PRODUCTOS ---
 
     @Override
     @Transactional
-    public Producto crearProducto(Producto producto) { return productoRepository.save(producto); }
+    public Producto crearProducto(Producto producto) { 
+        return productoRepository.save(producto); 
+    }
 
     @Override
     @Transactional
@@ -118,6 +157,12 @@ public class InventarioServiceImpl implements IInventarioService {
                     .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada con ID: " + dto.getCategoriaId()));
             producto.setCategoria(cat);
         }
+        if (dto.getEsPreparado() != null) {
+    producto.setEsPreparado(dto.getEsPreparado());
+}
+if (dto.getTiempoPreparacionMinutos() != null) {
+    producto.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos());
+}
         return productoRepository.save(producto);
     }
 
@@ -132,7 +177,9 @@ public class InventarioServiceImpl implements IInventarioService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<Producto> listarProductos() { return productoRepository.findAll(); }
+    public List<Producto> listarProductos() { 
+        return productoRepository.findAll(); 
+    }
 
     @Override
     @Transactional
@@ -177,7 +224,6 @@ public class InventarioServiceImpl implements IInventarioService {
         BigDecimal stockAnterior = insumo.getStockActual();
         BigDecimal stockPosterior = stockAnterior.add(dto.getCantidad());
 
-        // Cálculo de Promedio Ponderado para el nuevo Costo Unitario
         BigDecimal valorAnterior = stockAnterior.multiply(insumo.getCostoUnitario() != null ? insumo.getCostoUnitario() : BigDecimal.ZERO);
         BigDecimal valorNuevo = dto.getCantidad().multiply(dto.getCostoUnitario());
         BigDecimal nuevoCostoUnitario = valorAnterior.add(valorNuevo).divide(stockPosterior, 2, RoundingMode.HALF_UP);
@@ -256,7 +302,6 @@ public class InventarioServiceImpl implements IInventarioService {
         if (!faltantes.isEmpty()) {
             throw new StockInsuficienteException(faltantes);
         }
-
         registrarReservas(pedidoId, totalPorInsumo, insumosPorId);
     }
 
@@ -277,7 +322,7 @@ public class InventarioServiceImpl implements IInventarioService {
             mov.setTipoMovimiento("LIBERACION_RESERVA");
             mov.setCantidad(cantidad);
             mov.setStockAnterior(stockActual);
-            mov.setStockPosterior(stockActual); // LIBERACION_RESERVA tampoco toca stock_actual
+            mov.setStockPosterior(stockActual); 
             mov.setCostoUnitario(insumo.getCostoUnitario());
             mov.setPedidoId(pedidoId);
             mov.setObservacion("Liberación por cancelación de pedido #" + pedidoId);
@@ -296,7 +341,6 @@ public class InventarioServiceImpl implements IInventarioService {
             BigDecimal cantidad = reserva.getCantidad();
 
             if (insumo.getStockActual().compareTo(cantidad) < 0) {
-                // E3-1: el stock físico no alcanza aunque hubo reserva; no falla en silencio
                 requiereRevision = true;
                 insumo.setStockReservado(insumo.getStockReservado().subtract(cantidad).max(BigDecimal.ZERO));
                 insumoRepository.save(insumo);
@@ -325,7 +369,7 @@ public class InventarioServiceImpl implements IInventarioService {
         return requiereRevision;
     }
 
-    // --- MÓDULO 4: recipe-based para soporte multi-comanda (evita doble procesamiento de RESERVA) ---
+    // --- MÓDULO 4: recipe-based para soporte multi-comanda ---
 
     @Override
     @Transactional
@@ -333,9 +377,8 @@ public class InventarioServiceImpl implements IInventarioService {
         Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
         Map<Long, Insumo> insumosPorId = cargarInsumos(totalPorInsumo);
         Map<Long, BigDecimal> costoUnitarioPorDetalle = calcularCostoUnitarioPorDetalle(detalles);
-        boolean requiereRevision = false;
-        requiereRevision = consumirInsumos(pedidoId, totalPorInsumo, insumosPorId);
-
+        
+        boolean requiereRevision = consumirInsumos(pedidoId, totalPorInsumo, insumosPorId);
         persistirCostoUnitarioConsumido(detalles, costoUnitarioPorDetalle);
 
         return requiereRevision;
@@ -491,4 +534,23 @@ public class InventarioServiceImpl implements IInventarioService {
             }
         }
     }
+
+    @Override
+@Transactional
+public void activarCategoria(Long id) {
+    Categoria categoria = categoriaRepository.findById(id)
+            .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada con ID: " + id));
+    categoria.setEstadoRegistro(true);
+    categoriaRepository.save(categoria);
 }
+
+@Override
+@Transactional
+public void activarProducto(Long id) {
+    Producto producto = productoRepository.findById(id)
+            .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado con ID: " + id));
+    producto.setEstadoRegistro(true);
+    productoRepository.save(producto);
+}
+}
+

@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.models.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties; // <-- 1. IMPORTANTE AÑADIR ESTO
 import com.rutadelsabor.core.models.enums.EstadoDisponibilidad;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -14,6 +15,7 @@ public class Producto extends BaseTenantEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "categoria_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // <-- 2. ESTA ES LA CURA PARA EL ERROR 500
     private Categoria categoria;
 
     @Column(name = "nombre", nullable = false, length = 100)
@@ -52,4 +54,8 @@ public class Producto extends BaseTenantEntity {
 
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
+
+    public Long getCategoriaId() {
+        return this.categoria != null ? this.categoria.getId() : null;
+    }
 }
