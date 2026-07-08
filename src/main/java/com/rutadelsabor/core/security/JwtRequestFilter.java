@@ -27,46 +27,52 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
-
-        String authorizationHeader = request.getHeader("Authorization");
-
-        // Fallback: SSE clients (EventSource) can't send headers — accept token via query param
-        if (authorizationHeader == null) {
-            String tokenParam = request.getParameter("token");
-            if (tokenParam != null && !tokenParam.isBlank()) {
-                authorizationHeader = "Bearer " + tokenParam;
-            }
-        }
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        String authHeader = getAuthorizationHeader(request);
 
         try {
-            if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
-                String jwt = authorizationHeader.substring(7);
-                String username = jwtProvider.extractUsername(jwt);
-
-                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
-
-                    if (jwtProvider.validateToken(jwt, userDetails)) {
-                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                userDetails, null, userDetails.getAuthorities());
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(authToken);
-
-                        Long empresaId = jwtProvider.extractEmpresaId(jwt);
-                        TenantContext.setCurrentTenant(empresaId);
-                    }
-                }
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                procesarToken(authHeader.substring(7), request);
             }
-            // FIX: doFilter va DENTRO del try para que finally se ejecute DESPUÉS de que el
-            // controlador procesó el request completo, no antes.
             filterChain.doFilter(request, response);
-
         } finally {
-            // LIMPIEZA DE HILO: se ejecuta siempre, garantiza que el ThreadLocal no se filtre.
-            TenantContext.clear();
+            TenantContext.clear(); // Limpia EMPRESA y SEDE
+        }
+    }
+
+    private String getAuthorizationHeader(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header == null) {
+            String tokenParam = request.getParameter("token");
+            if (tokenParam != null && !tokenParam.isBlank()) {
+                return "Bearer " + tokenParam;
+            }
+        }
+        return header;
+    }
+
+    // FIX SonarLint: Reducción de complejidad cognitiva extrayendo la lógica
+    private void procesarToken(String jwt, HttpServletRequest request) {
+        String username = jwtProvider.extractUsername(jwt);
+        
+        // Si no hay usuario o ya está autenticado, salimos temprano
+        if (username == null || SecurityContextHolder.getContext().getAuthentication() != null) {
+            return;
+        }
+
+        UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+
+        if (jwtProvider.validateToken(jwt, userDetails)) {
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                    userDetails, null, userDetails.getAuthorities());
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+
+            TenantContext.setCurrentTenant(jwtProvider.extractEmpresaId(jwt));
+            Long sedeId = jwtProvider.extractSedeId(jwt);
+            if (sedeId != null) {
+                TenantContext.setCurrentSede(sedeId);
+            }
         }
     }
 }

@@ -1,106 +1,58 @@
 package com.rutadelsabor.core.services;
 
 import com.rutadelsabor.core.config.SseEmitterManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.rutadelsabor.core.models.entities.Pedido;
+import com.rutadelsabor.core.models.enums.EstadoPedido;
+import com.rutadelsabor.core.repositories.PedidoRepository;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
-@Component
+@Service
 public class EscalacionScheduler {
 
-    private static final Logger log = LoggerFactory.getLogger(EscalacionScheduler.class);
-    
-    // S1192: Constante para evitar literales duplicados
-    private static final String EVENTO_AVISO = "AVISO_PEDIDO_LISTO";
-
-    // R2-4: niveles de escalación ya enviados por pedido (1=sala, 2=caja, 3=gerencia).
-    // Limpiado automáticamente cuando el pedido sale del estado LISTO.
-    private final ConcurrentHashMap<Long, Set<Integer>> escalacionesEnviadas = new ConcurrentHashMap<>();
-
-    private final JdbcTemplate jdbc;
+    private final PedidoRepository pedidoRepository;
     private final SseEmitterManager sseEmitterManager;
 
-    public EscalacionScheduler(JdbcTemplate jdbc, SseEmitterManager sseEmitterManager) {
-        this.jdbc = jdbc;
+    public EscalacionScheduler(PedidoRepository pedidoRepository, SseEmitterManager sseEmitterManager) {
+        this.pedidoRepository = pedidoRepository;
         this.sseEmitterManager = sseEmitterManager;
     }
 
-    // R2-7: corre server-side cada 30 s independientemente de clientes conectados.
-    // SQL nativo: bypasses el filtro @TenantId de Hibernate para barrer todos los tenants.
-    @Scheduled(fixedDelay = 30_000)
-    public void escalarPedidosListos() {
-        List<PedidoListoRow> activos = jdbc.query(
-                "SELECT id, empresa_id, mozo_id, numero_orden, " +
-                "identificador_mesa_referencia, tipo_consumo, updated_at " +
-                "FROM pedidos WHERE estado_actual = 'LISTO'",
-                (rs, n) -> new PedidoListoRow(
-                        rs.getLong("id"),
-                        rs.getLong("empresa_id"),
-                        rs.getLong("mozo_id"),
-                        rs.getObject("numero_orden", Integer.class),
-                        rs.getString("identificador_mesa_referencia"),
-                        rs.getString("tipo_consumo"),
-                        // S8700/S8688: Convertir explícitamente a ZonedDateTime
-                        rs.getTimestamp("updated_at").toLocalDateTime().atZone(ZoneId.systemDefault())
-                )
-        );
+    // Se ejecuta de forma asíncrona cada minuto (60000 ms)
+    @Scheduled(fixedRate = 60000)
+    @Transactional(readOnly = true)
+    public void alertarPedidosDemorados() {
+        // Tolerancia: 20 minutos desde la creación
+        LocalDateTime limiteTolerancia = LocalDateTime.now(ZoneId.of("UTC")).minusMinutes(20);
 
-        // R2-4: elimina entradas de pedidos que ya salieron del estado LISTO
-        Set<Long> activosIds = activos.stream().map(PedidoListoRow::id).collect(Collectors.toSet());
-        escalacionesEnviadas.keySet().retainAll(activosIds);
+        // Búsqueda global a nivel de base de datos (ignora el TenantContext)
+        List<Pedido> demorados = pedidoRepository.findByEstadoActualAndCreatedAtBefore(
+                EstadoPedido.EN_PREPARACION, limiteTolerancia);
 
-        // S8688: Usar now() especificando el ZoneId
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.systemDefault());
+        for (Pedido pedido : demorados) {
+            // FIX CRÍTICO: Extracción directa desde la entidad para enrutar el evento
+            Long empresaId = pedido.getEmpresaId();
+            Long sedeId = pedido.getSedeId();
+                Object numeroOrden = pedido.getNumeroOrden() != null
+                    ? pedido.getNumeroOrden()
+                    : String.valueOf(pedido.getId());
 
-        for (PedidoListoRow row : activos) {
-            procesarEscalacion(row, now);
+            Map<String, Object> payload = Map.of(
+                    "pedidoId", pedido.getId(),
+                    "sedeId", sedeId, // Vital para que el Frontend de React filtre la alerta
+                    "numeroOrden", numeroOrden,
+                    "mensaje", "¡Alerta! Pedido superó el tiempo máximo de preparación."
+            );
+
+            // Emitir evento Server-Sent Events (SSE) a los roles correspondientes
+            sseEmitterManager.publicarPorRol(empresaId, "ROLE_COCINA", "ALERTA_DEMORA", payload);
+            sseEmitterManager.publicarPorRol(empresaId, "ROLE_GERENTE_SEDE", "ALERTA_DEMORA", payload);
         }
     }
-
-    // S3776: Extracción a método privado para reducir la Complejidad Cognitiva
-    private void procesarEscalacion(PedidoListoRow row, ZonedDateTime now) {
-        long min = ChronoUnit.MINUTES.between(row.updatedAt(), now);
-        Set<Integer> enviados = escalacionesEnviadas.computeIfAbsent(row.id(), k -> ConcurrentHashMap.newKeySet());
-
-        // S2154: Casteo a (Object) para unificar tipos del operador ternario
-        Map<String, Object> payload = Map.of(
-                "pedidoId", row.id(),
-                "numeroOrden", row.numeroOrden() != null ? row.numeroOrden() : (Object) row.id(),
-                "mesa", row.mesa() != null ? row.mesa() : "",
-                "tipoConsumo", row.tipoConsumo() != null ? row.tipoConsumo() : ""
-        );
-
-        // t >= 5 min → GERENTE/SUPER_ADMIN (plano vertical, R2)
-        if (min >= 5 && enviados.add(3)) {
-            log.info("Escalación nivel 3 (GERENCIA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
-            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_GERENTE", EVENTO_AVISO, payload);
-            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_SUPER_ADMIN", EVENTO_AVISO, payload);
-        }
-
-        // t >= 2 min → CAJERO (plano horizontal nivel 2, R2)
-        if (min >= 2 && enviados.add(2)) {
-            log.info("Escalación nivel 2 (CAJA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
-            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_CAJERO", EVENTO_AVISO, payload);
-        }
-
-        // t >= 1 min → todos los MOZOs del tenant (plano horizontal nivel 1, R2)
-        if (min >= 1 && enviados.add(1)) {
-            log.info("Escalación nivel 1 (SALA): pedido {} — {} min en LISTO, empresa {}", row.id(), min, row.empresaId());
-            sseEmitterManager.publicarPorRol(row.empresaId(), "ROLE_MOZO", EVENTO_AVISO, payload);
-        }
-    }
-
-    record PedidoListoRow(Long id, Long empresaId, Long mozoId, Integer numeroOrden,
-                          String mesa, String tipoConsumo, ZonedDateTime updatedAt) {}
 }

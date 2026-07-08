@@ -1,26 +1,25 @@
 package com.rutadelsabor.core.controllers;
 
-import com.rutadelsabor.core.dto.request.AjusteInventarioRequestDTO;
-import com.rutadelsabor.core.dto.request.CategoriaRequestDTO;
-import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
-import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
-import com.rutadelsabor.core.dto.request.MermaRequestDTO;
-import com.rutadelsabor.core.dto.request.ProductoRequestDTO;
-import com.rutadelsabor.core.dto.request.RecetaRequestDTO;
-import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
-import com.rutadelsabor.core.models.entities.*;
+import com.rutadelsabor.core.dto.request.*;
+import com.rutadelsabor.core.models.entities.Categoria;
+import com.rutadelsabor.core.models.entities.Insumo;
+import com.rutadelsabor.core.models.entities.Producto;
+import com.rutadelsabor.core.models.entities.RecetaDetalle;
+import com.rutadelsabor.core.models.entities.Usuario;
 import com.rutadelsabor.core.repositories.UsuarioRepository;
+import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IInventarioService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.rutadelsabor.core.dto.response.InsumoBajoStockDTO;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/inventario")
+@RequestMapping("/api/v1/inventario")
 public class InventarioController {
 
     private final IInventarioService inventarioService;
@@ -31,180 +30,151 @@ public class InventarioController {
         this.usuarioRepository = usuarioRepository;
     }
 
-    // ─── CATEGORÍAS ──────────────────────────────────────────────────────────
-
-    @GetMapping("/categorias")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
-    public ResponseEntity<List<Categoria>> listarCategorias() {
-        return ResponseEntity.ok(inventarioService.listarCategorias());
-    }
-
+    // --- CATEGORÍAS ---
     @PostMapping("/categorias")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
     public ResponseEntity<Categoria> crearCategoria(@RequestBody CategoriaRequestDTO dto) {
-        Categoria categoria = new Categoria();
-        categoria.setNombre(dto.getNombre());
-        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearCategoria(categoria));
+        Categoria cat = new Categoria();
+        cat.setNombre(dto.getNombre());
+        return new ResponseEntity<>(inventarioService.crearCategoria(cat), HttpStatus.CREATED);
     }
 
     @PutMapping("/categorias/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
     public ResponseEntity<Categoria> actualizarCategoria(@PathVariable Long id, @RequestBody CategoriaRequestDTO dto) {
         return ResponseEntity.ok(inventarioService.actualizarCategoria(id, dto));
     }
 
     @DeleteMapping("/categorias/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<String> desactivarCategoria(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
+    public ResponseEntity<Void> desactivarCategoria(@PathVariable Long id) {
         inventarioService.desactivarCategoria(id);
-        return ResponseEntity.ok("Categoría desactivada exitosamente.");
+        return ResponseEntity.noContent().build();
     }
 
-    // ─── PRODUCTOS ────────────────────────────────────────────────────────────
-
-    @GetMapping("/productos")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
-    public ResponseEntity<List<Producto>> listarProductos() {
-        return ResponseEntity.ok(inventarioService.listarProductos());
+    @GetMapping("/categorias")
+    public ResponseEntity<List<Categoria>> listarCategorias() {
+        return ResponseEntity.ok(inventarioService.listarCategorias());
     }
 
+    // --- INSUMOS (CATÁLOGO MULTI-SEDE) ---
+    @PostMapping("/insumos")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<Insumo> crearInsumo(@RequestBody InsumoRequestDTO dto) {
+        Insumo insumo = new Insumo();
+        insumo.setNombre(dto.getNombre());
+        insumo.setUnidadMedida(dto.getUnidadMedida());
+        // FIX: Ya no se setea stock aquí porque el Insumo es solo un catálogo
+        return new ResponseEntity<>(inventarioService.crearInsumo(insumo), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/insumos/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<Insumo> actualizarInsumo(@PathVariable Long id, @RequestBody InsumoRequestDTO dto) {
+        // FIX: El servicio actualizado (abajo) ignorará el stockMinimo en Insumo y solo actualizará Nombre/Unidad
+        return ResponseEntity.ok(inventarioService.actualizarInsumo(id, dto));
+    }
+
+    @DeleteMapping("/insumos/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
+    public ResponseEntity<Void> desactivarInsumo(@PathVariable Long id) {
+        inventarioService.desactivarInsumo(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/insumos")
+    public ResponseEntity<List<Insumo>> listarInsumos() {
+        return ResponseEntity.ok(inventarioService.listarInsumos());
+    }
+
+@GetMapping("/insumos/stock-bajo")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<List<InsumoBajoStockDTO>> listarInsumosConStockBajo() {
+        return ResponseEntity.ok(inventarioService.listarInsumosConStockBajo());
+    }
+
+    // --- PRODUCTOS ---
     @PostMapping("/productos")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
     public ResponseEntity<Producto> crearProducto(@RequestBody ProductoRequestDTO dto) {
         Producto producto = new Producto();
         producto.setNombre(dto.getNombre());
         producto.setPrecioVenta(dto.getPrecioVenta());
         producto.setTagsBusqueda(dto.getTagsBusqueda());
-        
-        if (dto.getCategoriaId() != null) {
-            Categoria categoria = new Categoria();
-            categoria.setId(dto.getCategoriaId());
-            producto.setCategoria(categoria);
-        }
-        if (dto.getEsPreparado() != null) {
-    producto.setEsPreparado(dto.getEsPreparado());
-}
-if (dto.getTiempoPreparacionMinutos() != null) {
-    producto.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos());
-}
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearProducto(producto));
+        producto.setEsPreparado(dto.getEsPreparado());
+        producto.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos());
+        return new ResponseEntity<>(inventarioService.crearProducto(producto), HttpStatus.CREATED);
     }
 
     @PutMapping("/productos/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
     public ResponseEntity<Producto> actualizarProducto(@PathVariable Long id, @RequestBody ProductoRequestDTO dto) {
         return ResponseEntity.ok(inventarioService.actualizarProducto(id, dto));
     }
 
     @DeleteMapping("/productos/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<String> desactivarProducto(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
+    public ResponseEntity<Void> desactivarProducto(@PathVariable Long id) {
         inventarioService.desactivarProducto(id);
-        return ResponseEntity.ok("Producto desactivado exitosamente.");
+        return ResponseEntity.noContent().build();
     }
 
-    // ─── INSUMOS ──────────────────────────────────────────────────────────────
-
-    @GetMapping("/insumos")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<List<Insumo>> listarInsumos() {
-        return ResponseEntity.ok(inventarioService.listarInsumos());
+    @GetMapping("/productos")
+    public ResponseEntity<List<Producto>> listarProductos() {
+        return ResponseEntity.ok(inventarioService.listarProductos());
     }
 
-    @PostMapping("/insumos")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<Insumo> crearInsumo(@RequestBody InsumoRequestDTO dto) {
-        Insumo insumo = new Insumo();
-        insumo.setNombre(dto.getNombre());
-        insumo.setUnidadMedida(dto.getUnidadMedida());
-        insumo.setStockMinimo(dto.getStockMinimo());
-        
-        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearInsumo(insumo));
+    // --- RECETAS ---
+@PostMapping("/productos/{id}/receta")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
+    public ResponseEntity<RecetaDetalle> agregarInsumoAReceta(@PathVariable Long id, @RequestBody RecetaRequestDTO dto) {
+        // Se cambió getCantidad() por getCantidadRequerida()
+        return new ResponseEntity<>(inventarioService.agregarInsumoAReceta(
+                id, dto.getInsumoId(), dto.getCantidadRequerida(), dto.getUnidadMedida()), HttpStatus.CREATED);
+    }
+    @GetMapping("/productos/{id}/receta")
+    public ResponseEntity<List<RecetaDetalle>> obtenerReceta(@PathVariable Long id) {
+        return ResponseEntity.ok(inventarioService.obtenerRecetaPorProducto(id));
     }
 
-    @PutMapping("/insumos/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<Insumo> actualizarInsumo(@PathVariable Long id, @RequestBody InsumoRequestDTO dto) {
-        return ResponseEntity.ok(inventarioService.actualizarInsumo(id, dto));
+    // --- MOVIMIENTOS KARDEX (AHORA POR SEDE) ---
+    @PostMapping("/kardex/entrada")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<Void> registrarEntrada(@RequestBody EntradaAlmacenRequestDTO dto, Authentication auth) {
+        inventarioService.registrarEntrada(dto, obtenerUsuario(auth));
+        return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping("/insumos/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<String> desactivarInsumo(@PathVariable Long id) {
-        inventarioService.desactivarInsumo(id);
-        return ResponseEntity.ok("Insumo desactivado exitosamente.");
+    @PostMapping("/kardex/merma")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE', 'COCINA')")
+    public ResponseEntity<Void> registrarMerma(@RequestBody MermaRequestDTO dto, Authentication auth) {
+        inventarioService.registrarMerma(dto, obtenerUsuario(auth));
+        return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/alertas")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<List<Insumo>> alertasStockBajo() {
-        return ResponseEntity.ok(inventarioService.listarInsumosConStockBajo());
+    @PostMapping("/kardex/ajuste")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<Void> registrarAjuste(@RequestBody AjusteInventarioRequestDTO dto, Authentication auth) {
+        inventarioService.registrarAjuste(dto, obtenerUsuario(auth));
+        return ResponseEntity.ok().build();
     }
 
-    // ─── RECETAS ──────────────────────────────────────────────────────────────
-
-    @GetMapping("/recetas/{productoId}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<List<RecetaDetalle>> obtenerReceta(@PathVariable Long productoId) {
-        return ResponseEntity.ok(inventarioService.obtenerRecetaPorProducto(productoId));
+    @GetMapping("/insumos/{id}/kardex")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<Object> listarKardex(@PathVariable Long id) {
+        return ResponseEntity.ok(inventarioService.listarKardexPorInsumo(id));
     }
 
-    @PostMapping("/recetas")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<RecetaDetalle> agregarInsumoAReceta(@RequestBody RecetaRequestDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(
-                inventarioService.agregarInsumoAReceta(dto.getProductoId(), dto.getInsumoId(), dto.getCantidadRequerida(), dto.getUnidadMedida())
-        );
+    private Usuario obtenerUsuario(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl userDetails)) {
+            throw new IllegalStateException("Usuario autenticado inválido");
+        }
+
+        Long usuarioId = userDetails.getUsuarioId();
+        if (usuarioId == null) {
+            throw new IllegalStateException("ID de usuario inválido");
+        }
+
+        return usuarioRepository.findById(usuarioId).orElseThrow();
     }
-
-    // ─── KARDEX ───────────────────────────────────────────────────────────────
-
-    @GetMapping("/kardex/{insumoId}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<List<KardexMovimiento>> listarKardex(@PathVariable Long insumoId) {
-        return ResponseEntity.ok(inventarioService.listarKardexPorInsumo(insumoId));
-    }
-
-    // ─── MOVIMIENTOS (ENTRADA / MERMA / AJUSTE) ───────────────────────────────
-
-    @PostMapping("/entradas")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<String> registrarEntrada(@RequestBody EntradaAlmacenRequestDTO dto, Authentication auth) {
-        inventarioService.registrarEntrada(dto, obtenerUsuarioAuth(auth));
-        return ResponseEntity.ok("Entrada registrada y Kardex actualizado.");
-    }
-
-    @PostMapping("/mermas")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<String> registrarMerma(@RequestBody MermaRequestDTO dto, Authentication auth) {
-        inventarioService.registrarMerma(dto, obtenerUsuarioAuth(auth));
-        return ResponseEntity.ok("Merma registrada y stock descontado.");
-    }
-
-    @PostMapping("/ajustes")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-    public ResponseEntity<String> registrarAjuste(@RequestBody AjusteInventarioRequestDTO dto, Authentication auth) {
-        inventarioService.registrarAjuste(dto, obtenerUsuarioAuth(auth));
-        return ResponseEntity.ok("Ajuste de inventario aplicado exitosamente.");
-    }
-
-    private Usuario obtenerUsuarioAuth(Authentication auth) {
-        return usuarioRepository.findByCorreo(auth.getName())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
-    }
-
-    @PutMapping("/categorias/{id}/activar")
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-public ResponseEntity<String> activarCategoria(@PathVariable Long id) {
-    inventarioService.activarCategoria(id);
-    return ResponseEntity.ok("Categoría activada exitosamente.");
-}
-
-@PutMapping("/productos/{id}/activar")
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
-public ResponseEntity<String> activarProducto(@PathVariable Long id) {
-    inventarioService.activarProducto(id);
-    return ResponseEntity.ok("Producto activado exitosamente.");
-}
 }

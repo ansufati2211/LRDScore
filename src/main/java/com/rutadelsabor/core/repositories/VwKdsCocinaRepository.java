@@ -7,6 +7,6 @@ import java.util.List;
 
 public interface VwKdsCocinaRepository extends JpaRepository<VwKdsCocina, Long> {
 
-    // FIFO: los pedidos más antiguos aparecen primero en cocina
-    List<VwKdsCocina> findByEstadoPedidoInOrderByHoraIngresoAsc(List<String> estados);
+    // FIX: Cada cocina física debe ver solo sus propios pedidos
+    List<VwKdsCocina> findBySedeIdAndEstadoPedidoInOrderByHoraIngresoAsc(Long sedeId, List<String> estados);
 }

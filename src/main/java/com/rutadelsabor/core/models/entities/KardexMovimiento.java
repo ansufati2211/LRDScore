@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 @Table(name = "kardex_movimientos")
 @Getter
 @Setter
-public class KardexMovimiento extends BaseTenantEntity {
+public class KardexMovimiento extends BaseSedeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "insumo_id", nullable = false)

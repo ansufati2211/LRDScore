@@ -9,18 +9,18 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(name = "insumos")
-public class Insumo extends BaseTenantEntity {
+@Table(name = "sedes")
+public class Sede extends BaseTenantEntity {
+
+    @Column(name = "codigo_establecimiento", length = 10)
+    private String codigoEstablecimiento;
 
     @Column(nullable = false, length = 100)
     private String nombre;
 
-    @Column(name = "unidad_medida", nullable = false, length = 20)
-    private String unidadMedida;
+    @Column(length = 255)
+    private String direccion;
 
     @Column(name = "estado_registro", nullable = false)
     private Boolean estadoRegistro = true;
-
-    // ELIMINADOS: stockActual, stockMinimo, stockReservado, costoUnitario.
-    // Ahora viven en InsumoSede.java
 }

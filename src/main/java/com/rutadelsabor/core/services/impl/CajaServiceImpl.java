@@ -32,10 +32,8 @@ public class CajaServiceImpl implements ICajaService {
     private final ProductoRepository productoRepository;
     private final SseEmitterManager sseEmitterManager;
 
-    public CajaServiceImpl(CajaRepository cajaRepository,
-                           UsuarioRepository usuarioRepository,
-                           TransaccionPagoRepository transaccionPagoRepository,
-                           ProductoRepository productoRepository,
+    public CajaServiceImpl(CajaRepository cajaRepository, UsuarioRepository usuarioRepository,
+                           TransaccionPagoRepository transaccionPagoRepository, ProductoRepository productoRepository,
                            SseEmitterManager sseEmitterManager) {
         this.cajaRepository = cajaRepository;
         this.usuarioRepository = usuarioRepository;
@@ -47,14 +45,16 @@ public class CajaServiceImpl implements ICajaService {
     @Override
     @Transactional
     public SesionCaja abrirCaja(Long cajeroId, BigDecimal montoInicial) {
-        cajaRepository.findByCajeroIdAndEstado(cajeroId, EstadoCaja.ABIERTA)
-                .ifPresent(c -> { throw new ReglaNegocioException("El cajero ya tiene una sesión de caja abierta."); });
+        Long sedeId = TenantContext.getCurrentSede(); // MULTI-SEDE
+        cajaRepository.findBySedeIdAndCajeroIdAndEstado(sedeId, cajeroId, EstadoCaja.ABIERTA)
+                .ifPresent(c -> { throw new ReglaNegocioException("El cajero ya tiene una sesión abierta en esta sede."); });
 
         Usuario cajero = usuarioRepository.findById(cajeroId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cajero no encontrado"));
 
         SesionCaja sesion = new SesionCaja();
         sesion.setCajero(cajero);
+        sesion.setSedeId(sedeId); // ASIGNACIÓN DE SEDE
         sesion.setMontoInicial(montoInicial);
         sesion.setEstado(EstadoCaja.ABIERTA);
         sesion.setFechaApertura(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
@@ -72,41 +72,35 @@ public class CajaServiceImpl implements ICajaService {
             throw new ReglaNegocioException("La sesión de caja ya se encuentra cerrada.");
         }
 
-        // montoFinalCalculado = efectivo inicial + suma de todos los pagos en EFECTIVO de la sesión
-        // (YAPE, TARJETA y PLIN no entran a la caja física)
         BigDecimal totalEfectivo = transaccionPagoRepository.sumarPorSesionYMetodo(sesionCajaId, MetodoPago.EFECTIVO);
         sesion.setMontoFinalCalculado(sesion.getMontoInicial().add(totalEfectivo));
-
         sesion.setEstado(EstadoCaja.CERRADA);
         sesion.setFechaCierre(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
         sesion.setMontoFinalDeclarado(montoFinalDeclarado);
 
         SesionCaja sesionCerrada = cajaRepository.save(sesion);
 
-        // R6-3/E6-3: reset masivo de AGOTADO_SERVICIO → DISPONIBLE al cerrar caja
         List<Producto> agotados = productoRepository.findByEstadoDisponibilidad(EstadoDisponibilidad.AGOTADO_SERVICIO);
         if (!agotados.isEmpty()) {
             agotados.forEach(p -> p.setEstadoDisponibilidad(EstadoDisponibilidad.DISPONIBLE));
             productoRepository.saveAll(agotados);
             sseEmitterManager.publicarTenant(TenantContext.getCurrentTenant(), "RESET_DISPONIBILIDAD", Map.of(
-                    "count", agotados.size(),
-                    "mensaje", "Productos AGOTADO_SERVICIO restablecidos al cierre de caja"
+                    "count", agotados.size(), "mensaje", "Productos restablecidos"
             ));
         }
-
         return sesionCerrada;
     }
 
     @Override
     @Transactional(readOnly = true)
     public SesionCaja obtenerCajaActivaPorCajero(Long cajeroId) {
-        return cajaRepository.findByCajeroIdAndEstado(cajeroId, EstadoCaja.ABIERTA)
-                .orElseThrow(() -> new RecursoNoEncontradoException("No hay ninguna sesión de caja abierta para este cajero."));
+        return cajaRepository.findBySedeIdAndCajeroIdAndEstado(TenantContext.getCurrentSede(), cajeroId, EstadoCaja.ABIERTA)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No hay ninguna sesión abierta para este cajero."));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<SesionCaja> listarHistorialPorCajero(Long cajeroId) {
-        return cajaRepository.findByCajeroIdOrderByFechaAperturaDesc(cajeroId);
+        return cajaRepository.findBySedeIdAndCajeroIdOrderByFechaAperturaDesc(TenantContext.getCurrentSede(), cajeroId);
     }
 }

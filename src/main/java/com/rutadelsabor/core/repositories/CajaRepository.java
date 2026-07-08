@@ -8,6 +8,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CajaRepository extends JpaRepository<SesionCaja, Long> {
-    Optional<SesionCaja> findByCajeroIdAndEstado(Long cajeroId, EstadoCaja estado);
-    List<SesionCaja> findByCajeroIdOrderByFechaAperturaDesc(Long cajeroId);
+    
+    // FIX: Filtramos siempre por SedeId
+    Optional<SesionCaja> findBySedeIdAndCajeroIdAndEstado(Long sedeId, Long cajeroId, EstadoCaja estado);
+    
+    List<SesionCaja> findBySedeIdAndCajeroIdOrderByFechaAperturaDesc(Long sedeId, Long cajeroId);
+    
+    List<SesionCaja> findBySedeIdOrderByFechaAperturaDesc(Long sedeId);
 }

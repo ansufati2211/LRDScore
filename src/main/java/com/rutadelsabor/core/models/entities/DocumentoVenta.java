@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @Setter
 @Entity
 @Table(name = "documentos_venta")
-public class DocumentoVenta extends BaseTenantEntity {
+public class DocumentoVenta extends BaseSedeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id")

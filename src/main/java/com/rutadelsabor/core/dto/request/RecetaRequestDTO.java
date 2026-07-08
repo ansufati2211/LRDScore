@@ -1,14 +1,11 @@
 package com.rutadelsabor.core.dto.request;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import java.math.BigDecimal;
 
-@Getter
-@Setter
+@Data
 public class RecetaRequestDTO {
-    private Long productoId;
     private Long insumoId;
-    private BigDecimal cantidadRequerida;
+    private BigDecimal cantidadRequerida; // <-- FIX APLICADO
     private String unidadMedida;
 }

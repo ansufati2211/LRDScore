@@ -12,7 +12,7 @@ import java.util.List;
 @Setter
 @Entity
 @Table(name = "documentos_cobro")
-public class DocumentoCobro extends BaseTenantEntity {
+public class DocumentoCobro extends BaseSedeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id", nullable = false)

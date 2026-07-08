@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+@SuppressWarnings("unused")
 @Service
 public class PedidoServiceImpl implements IPedidoService {
 
@@ -59,6 +60,7 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo) {
         Pedido pedido = new Pedido();
+        pedido.setSedeId(TenantContext.getCurrentSede()); // <-- INYECCIÓN DE SEDE CRÍTICA
         pedido.setMozo(mozo);
         pedido.setTipoConsumo(dto.getTipoConsumo());
         pedido.setIdentificadorMesaReferencia(dto.getMesa());
@@ -221,19 +223,13 @@ public class PedidoServiceImpl implements IPedidoService {
         p.setEstadoActual(EstadoPedido.CANCELADO);
     }
 
-    @Override
+ @Override
     @Transactional(readOnly = true)
     public List<PedidoActivoResponseDTO> listarPedidosActivos() {
-        List<EstadoPedido> estadosActivos = Arrays.asList(
-                EstadoPedido.RECIBIDO,
-                EstadoPedido.EN_PREPARACION,
-                EstadoPedido.LISTO,
-                EstadoPedido.ENTREGADO
-        );
-        return pedidoRepository.findByEstadoActualInOrderByCreatedAtDesc(estadosActivos)
-                .stream()
-                .map(this::mapToActivoResponseDTO)
-                .toList();
+        List<EstadoPedido> estados = Arrays.asList(EstadoPedido.RECIBIDO, EstadoPedido.EN_PREPARACION, EstadoPedido.LISTO, EstadoPedido.ENTREGADO);
+        // FIX: Usar el nuevo método del repositorio filtrado por Sede
+        return pedidoRepository.findBySedeIdAndEstadoActualInOrderByCreatedAtDesc(TenantContext.getCurrentSede(), estados)
+                .stream().map(this::mapToActivoResponseDTO).toList();
     }
 
     @Override
@@ -253,14 +249,10 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional(readOnly = true)
     public List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin) {
-        List<EstadoPedido> estadosHistoricos = Arrays.asList(EstadoPedido.PAGADO, EstadoPedido.CANCELADO);
-        LocalDateTime inicioDateTime = inicio.atStartOfDay();
-        LocalDateTime finDateTime = fin.atTime(23, 59, 59);
-        return pedidoRepository.findByEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
-                estadosHistoricos, inicioDateTime, finDateTime)
-                .stream()
-                .map(this::mapToActivoResponseDTO)
-                .toList();
+        List<EstadoPedido> hist = Arrays.asList(EstadoPedido.PAGADO, EstadoPedido.CANCELADO);
+        return pedidoRepository.findBySedeIdAndEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+                TenantContext.getCurrentSede(), hist, inicio.atStartOfDay(), fin.atTime(23, 59, 59))
+                .stream().map(this::mapToActivoResponseDTO).toList();
     }
 
     // --- MÓDULO 4 ---

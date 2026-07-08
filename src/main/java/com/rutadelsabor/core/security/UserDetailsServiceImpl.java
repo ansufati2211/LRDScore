@@ -19,27 +19,22 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String correo) throws UsernameNotFoundException {
-        // 1. Descubrir a qué empresa pertenece el usuario saltando a Hibernate
         Long empresaId = usuarioRepository.findEmpresaIdByCorreo(correo);
-        
         if (empresaId == null) {
             throw new UsernameNotFoundException("Usuario no encontrado con correo: " + correo);
         }
 
-        // 2. CORREGIDO: Pasamos el Long directamente porque tu TenantContext usa números
         TenantContext.setCurrentTenant(empresaId);
 
         try {
-            // 3. Ahora sí, cargar la entidad completa. Usamos findByCorreoYEmpresa (nativa) en vez de
-            // findByCorreo porque esta última pasa por el filtro @TenantId de Hibernate, cuyo valor
-            // queda fijado en -1 al abrir la Session (spring.jpa.open-in-view) antes de que el
-            // TenantContext.setCurrentTenant() de la línea anterior surta efecto.
             Usuario usuario = usuarioRepository.findByCorreoYEmpresa(correo, empresaId)
                     .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
             
-            return new UserDetailsImpl(usuario);
+            // Integración Multi-Sede
+            Long sedeId = usuarioRepository.findPrimerSedeIdByUsuarioId(usuario.getId()).orElse(null);
+            
+            return new UserDetailsImpl(usuario, sedeId);
         } finally {
-            // 4. MUY IMPORTANTE: Limpiar el contexto para no dejar la empresa pegada en este hilo
             TenantContext.clear();
         }
     }

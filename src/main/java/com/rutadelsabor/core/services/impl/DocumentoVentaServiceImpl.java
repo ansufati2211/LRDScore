@@ -65,54 +65,38 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
         try {
             tipo = TipoDocumentoVenta.valueOf(dto.getTipo().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ReglaNegocioException("Tipo de documento inválido: " + dto.getTipo() + ". Use NOTA_VENTA, BOLETA o FACTURA.");
+            throw new ReglaNegocioException("Tipo de documento inválido. Use NOTA_VENTA, BOLETA o FACTURA.");
         }
 
-        // E7-1: BOLETA y FACTURA solo con módulo FACTURACION habilitado
         if (tipo != TipoDocumentoVenta.NOTA_VENTA) {
-            Long empresaId = TenantContext.getCurrentTenant();
-            List<String> modulos = suscripcionService.obtenerModulosHabilitados(empresaId);
+            List<String> modulos = suscripcionService.obtenerModulosHabilitados(TenantContext.getCurrentTenant());
             if (!modulos.contains(Modulo.FACTURACION.name())) {
                 throw new ModuloNoHabilitadoException(Modulo.FACTURACION);
             }
         }
 
-        // E7-2: FACTURA exige RUC válido (11 dígitos)
-        if (tipo == TipoDocumentoVenta.FACTURA) {
-            validarRuc(dto.getNumeroDocumentoReceptor());
-        }
-
+        if (tipo == TipoDocumentoVenta.FACTURA) validarRuc(dto.getNumeroDocumentoReceptor());
         if (dto.getPedidoId() == null && dto.getDocumentoCobroId() == null) {
             throw new ReglaNegocioException("Debe indicar pedidoId o documentoCobroId.");
         }
 
         BigDecimal totalOrigen = resolverTotal(dto);
-        BigDecimal subtotal;
-        BigDecimal igv;
-        BigDecimal total = totalOrigen;
+        BigDecimal subtotal = (tipo == TipoDocumentoVenta.NOTA_VENTA) ? totalOrigen : totalOrigen.divide(IGV_DIVISOR, 2, RoundingMode.HALF_UP);
+        BigDecimal igv = totalOrigen.subtract(subtotal);
 
-        if (tipo == TipoDocumentoVenta.NOTA_VENTA) {
-            // Comprobante interno: sin desglose de IGV
-            subtotal = totalOrigen;
-            igv = BigDecimal.ZERO;
-        } else {
-            // BOLETA/FACTURA — precio de venta incluye IGV peruano 18 %
-            subtotal = totalOrigen.divide(IGV_DIVISOR, 2, RoundingMode.HALF_UP);
-            igv = totalOrigen.subtract(subtotal);
-        }
-
-        // R7-1: correlativo atómico, sin huecos, por (empresa_id, tipo)
-        String serie = serieParaTipo(tipo);
         Long empresaId = TenantContext.getCurrentTenant();
-        int correlativo = obtenerSiguienteCorrelativo(empresaId, tipo.name(), serie);
+        Long sedeId = TenantContext.getCurrentSede(); // MULTI-SEDE
+        String serie = serieParaTipo(tipo);
+        int correlativo = obtenerSiguienteCorrelativo(empresaId, sedeId, tipo.name(), serie);
 
         DocumentoVenta doc = new DocumentoVenta();
         doc.setTipo(tipo);
         doc.setSerie(serie);
         doc.setCorrelativo(correlativo);
+        doc.setSedeId(sedeId); // ASIGNACIÓN DE SEDE
         doc.setSubtotal(subtotal);
         doc.setIgv(igv);
-        doc.setTotal(total);
+        doc.setTotal(totalOrigen);
         doc.setEstadoEmision(EstadoEmision.EMITIDO);
         doc.setFechaEmision(LocalDateTime.now(ZONA_HORARIA));
         doc.setTipoDocumentoReceptor(dto.getTipoDocumentoReceptor());
@@ -139,97 +123,64 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
     public DocumentoVentaResponseDTO anular(Long documentoId, AnularDocumentoVentaRequestDTO dto) {
         DocumentoVenta doc = documentoVentaRepository.findById(documentoId)
             .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO));
-
-        if (doc.getEstadoEmision() == EstadoEmision.ANULADO) {
-            throw new ReglaNegocioException("El comprobante ya está anulado.");
-        }
-
-        if (dto.getMotivo() == null || dto.getMotivo().isBlank()) {
-            throw new ReglaNegocioException("El motivo de anulación es obligatorio.");
-        }
-
-        // E7-3: se registra como estado, jamás se borra el comprobante
+        if (doc.getEstadoEmision() == EstadoEmision.ANULADO) throw new ReglaNegocioException("El comprobante ya está anulado.");
+        if (dto.getMotivo() == null || dto.getMotivo().isBlank()) throw new ReglaNegocioException("Motivo obligatorio.");
+        
         doc.setEstadoEmision(EstadoEmision.ANULADO);
         doc.setMotivoAnulacion(dto.getMotivo());
-
         return mapToDTO(documentoVentaRepository.save(doc));
     }
 
     @Override
     @Transactional(readOnly = true)
     public DocumentoVentaResponseDTO obtenerPorId(Long documentoId) {
-        return mapToDTO(documentoVentaRepository.findById(documentoId)
-            .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO)));
+        return mapToDTO(documentoVentaRepository.findById(documentoId).orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO)));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<DocumentoVentaResponseDTO> listarPorPedido(Long pedidoId) {
-        return documentoVentaRepository.findByPedidoId(pedidoId).stream()
-                .map(this::mapToDTO).toList();
+        return documentoVentaRepository.findByPedidoId(pedidoId).stream().map(this::mapToDTO).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<DocumentoVentaResponseDTO> listarPorDocumentoCobro(Long documentoCobroId) {
-        return documentoVentaRepository.findByDocumentoCobroId(documentoCobroId).stream()
-                .map(this::mapToDTO).toList();
+        return documentoVentaRepository.findByDocumentoCobroId(documentoCobroId).stream().map(this::mapToDTO).toList();
     }
 
-    // ── helpers ────────────────────────────────────────────────────────────────
-
-    // E7-2: RUC peruano = exactamente 11 dígitos numéricos
     private void validarRuc(String ruc) {
-        if (ruc == null || !ruc.matches("\\d{11}")) {
-            throw new ReglaNegocioException(
-                    "La FACTURA requiere un número de RUC válido (11 dígitos numéricos). Valor recibido: " + ruc);
-        }
+        if (ruc == null || !ruc.matches("\\d{11}")) throw new ReglaNegocioException("RUC inválido.");
     }
 
-    // Serie por tipo — una única serie por tenant en esta fase (multi-serie es SUNAT fase 2)
     private String serieParaTipo(TipoDocumentoVenta tipo) {
-        return switch (tipo) {
-            case NOTA_VENTA -> "NV01";
-            case BOLETA     -> "B001";
-            case FACTURA    -> "F001";
-        };
+        return switch (tipo) { case NOTA_VENTA -> "NV01"; case BOLETA -> "B001"; case FACTURA -> "F001"; };
     }
 
-    // Resuelve el total origen desde el pedido o el documento de cobro
     private BigDecimal resolverTotal(EmitirDocumentoVentaRequestDTO dto) {
         if (dto.getDocumentoCobroId() != null) {
-            DocumentoCobro docCobro = documentoCobroRepository.findById(dto.getDocumentoCobroId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro " + dto.getDocumentoCobroId() + NO_ENCONTRADO));
-            return docCobro.getTotal();
+            return documentoCobroRepository.findById(dto.getDocumentoCobroId()).orElseThrow().getTotal();
         }
-        Pedido pedido = pedidoRepository.findById(dto.getPedidoId())
-            .orElseThrow(() -> new RecursoNoEncontradoException("Pedido " + dto.getPedidoId() + NO_ENCONTRADO));
-        return pedido.getTotal();
+        return pedidoRepository.findById(dto.getPedidoId()).orElseThrow().getTotal();
     }
 
-    /**
-     * R7-1: incremento atómico del correlativo usando INSERT ON CONFLICT DO UPDATE.
-     * Una sola sentencia SQL garantiza ausencia de huecos en entornos concurrentes y
-     * multi-nodo sin necesidad de bloqueos a nivel de aplicación.
-     */
+    // FIX: Actualizado con sede_id para respetar la PK compuesta de Módulo 8
     @SuppressWarnings("unchecked")
-    private int obtenerSiguienteCorrelativo(Long empresaId, String tipo, String serie) {
+    private int obtenerSiguienteCorrelativo(Long empresaId, Long sedeId, String tipo, String serie) {
         List<Number> resultado = entityManager.createNativeQuery(
-                "INSERT INTO series_correlativo (empresa_id, tipo, serie, ultimo_correlativo, updated_at) " +
-                "VALUES (:empresaId, :tipo, :serie, 1, NOW()) " +
-                "ON CONFLICT (empresa_id, tipo) DO UPDATE " +
-                "  SET ultimo_correlativo = series_correlativo.ultimo_correlativo + 1, " +
-                "      updated_at = NOW() " +
+                "INSERT INTO series_correlativo (empresa_id, sede_id, tipo, serie, ultimo_correlativo, updated_at) " +
+                "VALUES (:empresaId, :sedeId, :tipo, :serie, 1, NOW()) " +
+                "ON CONFLICT (sede_id, tipo) DO UPDATE " +
+                "  SET ultimo_correlativo = series_correlativo.ultimo_correlativo + 1, updated_at = NOW() " +
                 "RETURNING ultimo_correlativo"
         )
         .setParameter("empresaId", empresaId)
+        .setParameter("sedeId", sedeId)
         .setParameter("tipo", tipo)
         .setParameter("serie", serie)
         .getResultList();
 
-        if (resultado.isEmpty()) {
-            throw new IllegalStateException("No se pudo generar el correlativo para tipo=" + tipo);
-        }
+        if (resultado.isEmpty()) throw new IllegalStateException("Error al generar correlativo.");
         return resultado.get(0).intValue();
     }
 
@@ -248,10 +199,6 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
         dto.setTotal(doc.getTotal());
         dto.setEstadoEmision(doc.getEstadoEmision().name());
         dto.setFechaEmision(doc.getFechaEmision() != null ? doc.getFechaEmision().toString() : null);
-        dto.setMotivoAnulacion(doc.getMotivoAnulacion());
-        dto.setPedidoId(doc.getPedido() != null ? doc.getPedido().getId() : null);
-        dto.setDocumentoCobroId(doc.getDocumentoCobro() != null ? doc.getDocumentoCobro().getId() : null);
-        dto.setDocumentoReferenciaId(doc.getDocumentoReferencia() != null ? doc.getDocumentoReferencia().getId() : null);
         return dto;
     }
 }

@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Table(name = "sesiones_caja")
 @Getter
 @Setter
-public class SesionCaja extends BaseTenantEntity {
+public class SesionCaja extends BaseSedeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cajero_id", nullable = false)

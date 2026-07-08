@@ -6,6 +6,7 @@ import com.rutadelsabor.core.dto.request.EntradaAlmacenRequestDTO;
 import com.rutadelsabor.core.dto.request.InsumoRequestDTO;
 import com.rutadelsabor.core.dto.request.MermaRequestDTO;
 import com.rutadelsabor.core.dto.request.ProductoRequestDTO;
+import com.rutadelsabor.core.dto.response.InsumoBajoStockDTO;
 import com.rutadelsabor.core.models.entities.*;
 
 import java.math.BigDecimal;
@@ -23,9 +24,7 @@ public interface IInventarioService {
     Insumo actualizarInsumo(Long id, InsumoRequestDTO dto);
     void desactivarInsumo(Long id);
     List<Insumo> listarInsumos();
-    List<Insumo> listarInsumosConStockBajo();
-
-    // --- PRODUCTOS ---
+List<InsumoBajoStockDTO> listarInsumosConStockBajo();    // --- PRODUCTOS ---
     Producto crearProducto(Producto producto);
     Producto actualizarProducto(Long id, ProductoRequestDTO dto);
     void desactivarProducto(Long id);
@@ -39,7 +38,7 @@ public interface IInventarioService {
     List<RecetaDetalle> obtenerRecetaPorProducto(Long productoId);
 
     // --- KARDEX ---
-    List<KardexMovimiento> listarKardexPorInsumo(Long insumoId);
+List<KardexMovimiento> listarKardexPorInsumo(Long insumoId);
     void registrarEntrada(EntradaAlmacenRequestDTO dto, Usuario usuario);
     void registrarMerma(MermaRequestDTO dto, Usuario usuario);
     void registrarAjuste(AjusteInventarioRequestDTO dto, Usuario usuario);

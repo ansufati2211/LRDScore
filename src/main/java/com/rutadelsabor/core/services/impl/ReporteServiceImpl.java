@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.services.impl;
 
+import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.dto.response.DashboardVentasDTO;
 import com.rutadelsabor.core.dto.response.MargenVentasDTO;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
@@ -43,7 +44,15 @@ public class ReporteServiceImpl implements IReporteService {
     public DashboardVentasDTO obtenerResumenVentas(LocalDate inicio, LocalDate fin) {
         validarRangoFechas(inicio, fin);
 
-        List<VwDashboardVentas> ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
+        Long sedeId = TenantContext.getCurrentSede();
+        List<VwDashboardVentas> ventas;
+
+        // BIFURCACIÓN MULTI-SEDE
+        if (sedeId != null) {
+            ventas = dashboardRepository.findBySedeIdAndFechaBetweenOrderByFechaAsc(sedeId, inicio, fin);
+        } else {
+            ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
+        }
 
         DashboardVentasDTO dto = new DashboardVentasDTO();
 
@@ -73,7 +82,17 @@ public class ReporteServiceImpl implements IReporteService {
     @Override
     public byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin) {
         validarRangoFechas(inicio, fin);
-        List<VwDashboardVentas> ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
+        
+        Long sedeId = TenantContext.getCurrentSede();
+        List<VwDashboardVentas> ventas;
+
+        // BIFURCACIÓN MULTI-SEDE
+        if (sedeId != null) {
+            ventas = dashboardRepository.findBySedeIdAndFechaBetweenOrderByFechaAsc(sedeId, inicio, fin);
+        } else {
+            ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
+        }
+        
         return excelManager.generarReporteVentas(ventas);
     }
 
