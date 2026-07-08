@@ -7,12 +7,12 @@ import com.rutadelsabor.core.models.entities.Usuario;
 import java.util.List;
 
 public interface IUsuarioService {
-    List<Usuario> listarUsuarios();
-    Usuario obtenerUsuario(Long id);
     Usuario crearUsuario(UsuarioRequestDTO dto);
     Usuario actualizarUsuario(Long id, UsuarioRequestDTO dto);
-    void desactivarUsuario(Long id);
+    Usuario obtenerUsuario(Long id); // FIX Error 1
     void cambiarPassword(Long id, CambiarPasswordDTO dto);
-
-    void resetPassword(Long id, String nuevaPassword);
+    void resetPassword(Long id, String nuevaPassword); // FIX Error 2
+    void desactivarUsuario(Long id);
+    void activarUsuario(Long id); // FIX Error 4
+    List<Usuario> listarUsuarios();
 }

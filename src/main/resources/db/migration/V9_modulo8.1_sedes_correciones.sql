@@ -293,3 +293,5 @@ INSERT INTO clientes (id, empresa_id, nombre_razon_social, tipo_documento, numer
 (2, 1, 'Pablo', 'DNI', '70654321', 'pablo@correo.com'),
 (3, 1, 'Ignacio', 'DNI', '70987654', 'ignacio@correo.com')
 ON CONFLICT DO NOTHING;
+
+DELETE FROM usuario_sedes WHERE usuario_id = 1;

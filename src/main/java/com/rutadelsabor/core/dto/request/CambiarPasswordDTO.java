@@ -14,5 +14,5 @@ public class CambiarPasswordDTO {
 
     @NotBlank(message = "La contraseña nueva es obligatoria")
     @Size(min = 8, message = "La contraseña nueva debe tener mínimo 8 caracteres")
-    private String passwordNueva;
+    private String nuevaPassword;
 }

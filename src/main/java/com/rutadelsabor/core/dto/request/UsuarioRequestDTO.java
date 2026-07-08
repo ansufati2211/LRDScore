@@ -26,4 +26,7 @@ public class UsuarioRequestDTO {
         message = "Rol inválido. Valores permitidos: ROLE_SUPER_ADMIN, ROLE_GERENTE, ROLE_CAJERO, ROLE_MOZO, ROLE_COCINA"
     )
     private String rol;
+
+    private Long sedeId; // <-- AÑADIDO PARA ASIGNAR LOCAL AL EMPLEADO
+    
 }

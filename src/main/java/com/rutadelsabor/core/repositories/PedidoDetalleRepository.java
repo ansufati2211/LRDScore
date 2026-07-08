@@ -7,42 +7,43 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-
 import java.time.LocalDateTime;
 import java.util.List;
 
-
 public interface PedidoDetalleRepository extends JpaRepository<PedidoDetalle, Long> {
 
-    // Módulo 5 — R5-2/R5-3: ítems vendidos con costo snapshot en pedidos PAGADO del período
-    @Query("""
-        SELECT pd FROM PedidoDetalle pd
-        JOIN FETCH pd.pedido p
-        JOIN FETCH pd.producto pr
-        JOIN FETCH pr.categoria
-        WHERE p.estadoActual = :estado
-          AND p.createdAt >= :inicio
-          AND p.createdAt <= :fin
-          AND pd.estadoItem <> :cancelado
-          AND pd.costoUnitarioConsumido IS NOT NULL
-        """)
+    @Query("SELECT d FROM PedidoDetalle d JOIN FETCH d.producto p JOIN FETCH p.categoria c JOIN FETCH d.pedido ped " +
+           "WHERE ped.estadoActual = :estadoPedido AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
+           "AND d.estadoItem != :estadoExcluido")
     List<PedidoDetalle> findDetallesConCostoPorPeriodo(
-            @Param("estado") EstadoPedido estado,
+            @Param("estadoPedido") EstadoPedido estadoPedido,
             @Param("inicio") LocalDateTime inicio,
             @Param("fin") LocalDateTime fin,
-            @Param("cancelado") EstadoItem cancelado);
+            @Param("estadoExcluido") EstadoItem estadoExcluido);
 
-    // Módulo 5 — E5-2: ítems cancelados con consumo previo (merma) en el período
-    @Query("""
-        SELECT pd FROM PedidoDetalle pd
-        JOIN FETCH pd.pedido p
-        WHERE p.createdAt >= :inicio
-          AND p.createdAt <= :fin
-          AND pd.estadoItem = :cancelado
-          AND pd.costoUnitarioConsumido IS NOT NULL
-        """)
+    @Query("SELECT d FROM PedidoDetalle d JOIN FETCH d.producto p JOIN FETCH p.categoria c JOIN FETCH d.pedido ped " +
+           "WHERE ped.createdAt >= :inicio AND ped.createdAt <= :fin AND d.estadoItem = :estadoCancelado")
     List<PedidoDetalle> findDetallesMermaConCostoPorPeriodo(
             @Param("inicio") LocalDateTime inicio,
             @Param("fin") LocalDateTime fin,
-            @Param("cancelado") EstadoItem cancelado);
+            @Param("estadoCancelado") EstadoItem estadoCancelado);
+
+    // NUEVAS CONSULTAS MULTI-SEDE
+    @Query("SELECT d FROM PedidoDetalle d JOIN FETCH d.producto p JOIN FETCH p.categoria c JOIN FETCH d.pedido ped " +
+           "WHERE ped.sedeId = :sedeId AND ped.estadoActual = :estadoPedido AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
+           "AND d.estadoItem != :estadoExcluido")
+    List<PedidoDetalle> findDetallesConCostoPorPeriodoYSede(
+            @Param("sedeId") Long sedeId,
+            @Param("estadoPedido") EstadoPedido estadoPedido,
+            @Param("inicio") LocalDateTime inicio,
+            @Param("fin") LocalDateTime fin,
+            @Param("estadoExcluido") EstadoItem estadoExcluido);
+
+    @Query("SELECT d FROM PedidoDetalle d JOIN FETCH d.producto p JOIN FETCH p.categoria c JOIN FETCH d.pedido ped " +
+           "WHERE ped.sedeId = :sedeId AND ped.createdAt >= :inicio AND ped.createdAt <= :fin AND d.estadoItem = :estadoCancelado")
+    List<PedidoDetalle> findDetallesMermaConCostoPorPeriodoYSede(
+            @Param("sedeId") Long sedeId,
+            @Param("inicio") LocalDateTime inicio,
+            @Param("fin") LocalDateTime fin,
+            @Param("estadoCancelado") EstadoItem estadoCancelado);
 }

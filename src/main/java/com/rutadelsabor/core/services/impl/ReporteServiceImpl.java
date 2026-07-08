@@ -15,6 +15,7 @@ import com.rutadelsabor.core.repositories.VwDashboardVentasRepository;
 import com.rutadelsabor.core.services.interfaces.IReporteService;
 import com.rutadelsabor.core.services.reportes.ExcelReportManager;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -41,13 +42,13 @@ public class ReporteServiceImpl implements IReporteService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public DashboardVentasDTO obtenerResumenVentas(LocalDate inicio, LocalDate fin) {
         validarRangoFechas(inicio, fin);
 
         Long sedeId = TenantContext.getCurrentSede();
         List<VwDashboardVentas> ventas;
 
-        // BIFURCACIÓN MULTI-SEDE
         if (sedeId != null) {
             ventas = dashboardRepository.findBySedeIdAndFechaBetweenOrderByFechaAsc(sedeId, inicio, fin);
         } else {
@@ -80,13 +81,13 @@ public class ReporteServiceImpl implements IReporteService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin) {
         validarRangoFechas(inicio, fin);
         
         Long sedeId = TenantContext.getCurrentSede();
         List<VwDashboardVentas> ventas;
 
-        // BIFURCACIÓN MULTI-SEDE
         if (sedeId != null) {
             ventas = dashboardRepository.findBySedeIdAndFechaBetweenOrderByFechaAsc(sedeId, inicio, fin);
         } else {
@@ -97,17 +98,25 @@ public class ReporteServiceImpl implements IReporteService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public MargenVentasDTO obtenerMargenVentas(LocalDate inicio, LocalDate fin) {
         validarRangoFechas(inicio, fin);
 
         LocalDateTime inicioTs = inicio.atStartOfDay();
         LocalDateTime finTs = fin.atTime(23, 59, 59);
+        Long sedeId = TenantContext.getCurrentSede(); 
 
-        List<PedidoDetalle> vendidos = detalleRepository.findDetallesConCostoPorPeriodo(
-                EstadoPedido.PAGADO, inicioTs, finTs, EstadoItem.CANCELADO);
+        List<PedidoDetalle> vendidos;
+        List<PedidoDetalle> merma;
 
-        List<PedidoDetalle> merma = detalleRepository.findDetallesMermaConCostoPorPeriodo(
-                inicioTs, finTs, EstadoItem.CANCELADO);
+        // BIFURCACIÓN PARA EL CÁLCULO DE MÁRGENES
+        if (sedeId != null) {
+            vendidos = detalleRepository.findDetallesConCostoPorPeriodoYSede(sedeId, EstadoPedido.PAGADO, inicioTs, finTs, EstadoItem.CANCELADO);
+            merma = detalleRepository.findDetallesMermaConCostoPorPeriodoYSede(sedeId, inicioTs, finTs, EstadoItem.CANCELADO);
+        } else {
+            vendidos = detalleRepository.findDetallesConCostoPorPeriodo(EstadoPedido.PAGADO, inicioTs, finTs, EstadoItem.CANCELADO);
+            merma = detalleRepository.findDetallesMermaConCostoPorPeriodo(inicioTs, finTs, EstadoItem.CANCELADO);
+        }
 
         Map<Long, MargenVentasDTO.MargenProductoDTO> porProducto = new LinkedHashMap<>();
         Map<Long, MargenVentasDTO.MargenCategoriaDTO> porCategoria = new LinkedHashMap<>();
@@ -118,7 +127,6 @@ public class ReporteServiceImpl implements IReporteService {
             Producto producto = pd.getProducto();
             Categoria cat = producto.getCategoria();
 
-            // E5-1: ingreso efectivo tras descuento proporcional del pedido
             BigDecimal subtotalItem = pd.getSubtotal();
             BigDecimal pedidoSubtotal = pd.getPedido().getSubtotal();
             BigDecimal pedidoTotal = pd.getPedido().getTotal();
@@ -134,11 +142,9 @@ public class ReporteServiceImpl implements IReporteService {
             ingresosTotales = ingresosTotales.add(ingresoEfectivo);
             costoTotalVentas = costoTotalVentas.add(costoItem);
 
-            // R5-4: esEstimado = producto sin receta con costo_referencial configurado
             boolean esEstimado = !Boolean.TRUE.equals(producto.getEsPreparado())
                     && producto.getCostoReferencial() != null;
 
-            // Desglose por producto (R5-3)
             porProducto.computeIfAbsent(producto.getId(), id -> {
                 MargenVentasDTO.MargenProductoDTO p = new MargenVentasDTO.MargenProductoDTO();
                 p.setProductoId(id);
@@ -152,7 +158,6 @@ public class ReporteServiceImpl implements IReporteService {
             mp.setIngresos(mp.getIngresos().add(ingresoEfectivo));
             mp.setCostoVentas(mp.getCostoVentas().add(costoItem));
 
-            // Desglose por categoría (R5-3)
             porCategoria.computeIfAbsent(cat.getId(), id -> {
                 MargenVentasDTO.MargenCategoriaDTO c = new MargenVentasDTO.MargenCategoriaDTO();
                 c.setCategoriaId(id);
@@ -166,7 +171,6 @@ public class ReporteServiceImpl implements IReporteService {
             mc.setCostoVentas(mc.getCostoVentas().add(costoItem));
         }
 
-        // E5-2: costo de merma (cancelados que ya consumieron inventario)
         BigDecimal costoMerma = BigDecimal.ZERO;
         for (PedidoDetalle pd : merma) {
             costoMerma = costoMerma.add(pd.getCostoUnitarioConsumido()
@@ -174,7 +178,6 @@ public class ReporteServiceImpl implements IReporteService {
                     .setScale(4, RoundingMode.HALF_UP));
         }
 
-        // Derivar utilidad y margen por producto
         List<MargenVentasDTO.MargenProductoDTO> desgloseProductos = new ArrayList<>(porProducto.values());
         desgloseProductos.forEach(p -> {
             BigDecimal ub = p.getIngresos().subtract(p.getCostoVentas());
@@ -182,7 +185,6 @@ public class ReporteServiceImpl implements IReporteService {
             p.setMargenPct(calcularMargenPct(p.getIngresos(), ub));
         });
 
-        // Derivar utilidad y margen por categoría
         List<MargenVentasDTO.MargenCategoriaDTO> desgloseCategoria = new ArrayList<>(porCategoria.values());
         desgloseCategoria.forEach(c -> {
             BigDecimal ub = c.getIngresos().subtract(c.getCostoVentas());
@@ -217,7 +219,7 @@ public class ReporteServiceImpl implements IReporteService {
             throw new ReglaNegocioException("Las fechas de inicio y fin para la generación del reporte no pueden ser nulas.");
         }
         if (inicio.isAfter(fin)) {
-            throw new ReglaNegocioException("Inconsistencia de rango: La fecha de inicio (" + inicio + ") no puede ser posterior a la fecha de fin (" + fin + ").");
+            throw new ReglaNegocioException("Inconsistencia de rango: La fecha de inicio no puede ser posterior a la fecha de fin.");
         }
     }
 }
