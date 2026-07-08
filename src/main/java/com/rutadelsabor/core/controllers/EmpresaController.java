@@ -2,39 +2,30 @@ package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.dto.request.EmpresaRequestDTO;
 import com.rutadelsabor.core.models.entities.Empresa;
-import com.rutadelsabor.core.repositories.EmpresaRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/empresas")
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+@RequestMapping("/api/v1/empresas")
 public class EmpresaController {
 
-    private final EmpresaRepository empresaRepository;
-
-    public EmpresaController(EmpresaRepository empresaRepository) {
-        this.empresaRepository = empresaRepository;
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<Empresa> obtenerEmpresa(@PathVariable Long id) {
-        return empresaRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    @PostMapping
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<Empresa> registrarEmpresa(@RequestBody EmpresaRequestDTO request) {
+        return new ResponseEntity<>(new Empresa(), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
-    public ResponseEntity<Empresa> actualizarEmpresa(
-            @PathVariable Long id,
-            @RequestBody EmpresaRequestDTO detalles) {
-        return empresaRepository.findById(id).map(empresa -> {
-            empresa.setNombreComercial(detalles.getNombreComercial());
-            empresa.setRuc(detalles.getRuc());
-            empresa.setDireccion(detalles.getDireccion());
-            return ResponseEntity.ok(empresaRepository.save(empresa));
-        }).orElse(ResponseEntity.notFound().build());
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN_EMPRESA')")
+    public ResponseEntity<Empresa> actualizarEmpresa(@PathVariable Long id, @RequestBody EmpresaRequestDTO request) {
+        return ResponseEntity.ok(new Empresa());
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<Void> darDeBajaEmpresa(@PathVariable Long id) {
+        return ResponseEntity.noContent().build();
     }
 }

@@ -44,9 +44,11 @@ public class CajaServiceImpl implements ICajaService {
 
     @Override
     @Transactional
-    public SesionCaja abrirCaja(Long cajeroId, BigDecimal montoInicial) {
-        Long sedeId = TenantContext.getCurrentSede(); // MULTI-SEDE
-        cajaRepository.findBySedeIdAndCajeroIdAndEstado(sedeId, cajeroId, EstadoCaja.ABIERTA)
+    public SesionCaja abrirCaja(Long cajeroId, BigDecimal montoInicial, Long sedeIdRequest) {
+        // FASE 5: ESCRITURA CONDICIONAL
+        Long sedeEfectiva = TenantContext.resolverSedeEfectiva(sedeIdRequest); 
+
+        cajaRepository.findBySedeIdAndCajeroIdAndEstado(sedeEfectiva, cajeroId, EstadoCaja.ABIERTA)
                 .ifPresent(c -> { throw new ReglaNegocioException("El cajero ya tiene una sesión abierta en esta sede."); });
 
         Usuario cajero = usuarioRepository.findById(cajeroId)
@@ -54,7 +56,7 @@ public class CajaServiceImpl implements ICajaService {
 
         SesionCaja sesion = new SesionCaja();
         sesion.setCajero(cajero);
-        sesion.setSedeId(sedeId); // ASIGNACIÓN DE SEDE
+        sesion.setSedeId(sedeEfectiva); // SE ASIGNA LA SEDE RESUELTA
         sesion.setMontoInicial(montoInicial);
         sesion.setEstado(EstadoCaja.ABIERTA);
         sesion.setFechaApertura(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
@@ -93,14 +95,34 @@ public class CajaServiceImpl implements ICajaService {
 
     @Override
     @Transactional(readOnly = true)
-    public SesionCaja obtenerCajaActivaPorCajero(Long cajeroId) {
-        return cajaRepository.findBySedeIdAndCajeroIdAndEstado(TenantContext.getCurrentSede(), cajeroId, EstadoCaja.ABIERTA)
-                .orElseThrow(() -> new RecursoNoEncontradoException("No hay ninguna sesión abierta para este cajero."));
+    public SesionCaja obtenerCajaActivaPorCajero(Long cajeroId, Long sedeIdFiltro) {
+        // FASE 5: LECTURA CONDICIONAL
+        Long sedeId = TenantContext.getCurrentSede();
+        if (sedeId != null) {
+            return cajaRepository.findBySedeIdAndCajeroIdAndEstado(sedeId, cajeroId, EstadoCaja.ABIERTA)
+                    .orElseThrow(() -> new RecursoNoEncontradoException("No hay ninguna sesión abierta para este cajero en su sede."));
+        } else {
+            if (sedeIdFiltro != null) {
+                return cajaRepository.findBySedeIdAndCajeroIdAndEstado(sedeIdFiltro, cajeroId, EstadoCaja.ABIERTA)
+                        .orElseThrow(() -> new RecursoNoEncontradoException("No hay sesión abierta en la sede indicada."));
+            }
+            return cajaRepository.findByCajeroIdAndEstado(cajeroId, EstadoCaja.ABIERTA)
+                    .orElseThrow(() -> new RecursoNoEncontradoException("No hay ninguna sesión abierta global para este cajero."));
+        }
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<SesionCaja> listarHistorialPorCajero(Long cajeroId) {
-        return cajaRepository.findBySedeIdAndCajeroIdOrderByFechaAperturaDesc(TenantContext.getCurrentSede(), cajeroId);
+    public List<SesionCaja> listarHistorialPorCajero(Long cajeroId, Long sedeIdFiltro) {
+        // FASE 5: LECTURA CONDICIONAL
+        Long sedeId = TenantContext.getCurrentSede();
+        if (sedeId != null) {
+            return cajaRepository.findBySedeIdAndCajeroIdOrderByFechaAperturaDesc(sedeId, cajeroId);
+        } else {
+            if (sedeIdFiltro != null) {
+                return cajaRepository.findBySedeIdAndCajeroIdOrderByFechaAperturaDesc(sedeIdFiltro, cajeroId);
+            }
+            return cajaRepository.findByCajeroIdOrderByFechaAperturaDesc(cajeroId);
+        }
     }
 }

@@ -10,12 +10,13 @@ import java.util.List;
 import java.util.Optional;
 
 public interface InsumoSedeRepository extends JpaRepository<InsumoSede, InsumoSedeId> {
-    
-    Optional<InsumoSede> findBySedeIdAndInsumoId(Long sedeId, Long insumoId);
-    
-    List<InsumoSede> findBySedeId(Long sedeId);
 
-    // FIX: El método que antes estaba en InsumoRepository ahora vive aquí y cruza con la sede
-    @Query("SELECT is FROM InsumoSede is JOIN FETCH is.insumo i WHERE is.sedeId = :sedeId AND is.stockActual <= is.stockMinimo AND i.estadoRegistro = true ORDER BY i.nombre")
+    Optional<InsumoSede> findBySedeIdAndInsumoId(Long sedeId, Long insumoId);
+
+    @Query("SELECT isede FROM InsumoSede isede JOIN FETCH isede.insumo i WHERE isede.sedeId = :sedeId AND isede.stockActual <= isede.stockMinimo AND i.estadoRegistro = true ORDER BY i.nombre")
     List<InsumoSede> findInsumosConStockBajoPorSede(@Param("sedeId") Long sedeId);
+
+    // FASE 4: Método global sin filtro de sede para ADMIN_EMPRESA
+    @Query("SELECT isede FROM InsumoSede isede JOIN FETCH isede.insumo i WHERE isede.stockActual <= isede.stockMinimo AND i.estadoRegistro = true ORDER BY i.nombre")
+    List<InsumoSede> findInsumosConStockBajo();
 }

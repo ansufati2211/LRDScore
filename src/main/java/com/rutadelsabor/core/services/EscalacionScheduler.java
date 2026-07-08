@@ -24,35 +24,31 @@ public class EscalacionScheduler {
         this.sseEmitterManager = sseEmitterManager;
     }
 
-    // Se ejecuta de forma asíncrona cada minuto (60000 ms)
     @Scheduled(fixedRate = 60000)
     @Transactional(readOnly = true)
     public void alertarPedidosDemorados() {
-        // Tolerancia: 20 minutos desde la creación
         LocalDateTime limiteTolerancia = LocalDateTime.now(ZoneId.of("UTC")).minusMinutes(20);
 
-        // Búsqueda global a nivel de base de datos (ignora el TenantContext)
         List<Pedido> demorados = pedidoRepository.findByEstadoActualAndCreatedAtBefore(
                 EstadoPedido.EN_PREPARACION, limiteTolerancia);
 
         for (Pedido pedido : demorados) {
-            // FIX CRÍTICO: Extracción directa desde la entidad para enrutar el evento
             Long empresaId = pedido.getEmpresaId();
             Long sedeId = pedido.getSedeId();
-                Object numeroOrden = pedido.getNumeroOrden() != null
+            Object numeroOrden = pedido.getNumeroOrden() != null
                     ? pedido.getNumeroOrden()
                     : String.valueOf(pedido.getId());
 
             Map<String, Object> payload = Map.of(
                     "pedidoId", pedido.getId(),
-                    "sedeId", sedeId, // Vital para que el Frontend de React filtre la alerta
+                    "sedeId", sedeId, 
                     "numeroOrden", numeroOrden,
                     "mensaje", "¡Alerta! Pedido superó el tiempo máximo de preparación."
             );
 
-            // Emitir evento Server-Sent Events (SSE) a los roles correspondientes
-            sseEmitterManager.publicarPorRol(empresaId, "ROLE_COCINA", "ALERTA_DEMORA", payload);
-            sseEmitterManager.publicarPorRol(empresaId, "ROLE_GERENTE_SEDE", "ALERTA_DEMORA", payload);
+            // FASE 7: Emite la alarma EXCLUSIVAMENTE a la cocina y gerente de ese local específico
+            sseEmitterManager.publicarPorRolYSede(empresaId, "ROLE_COCINA", sedeId, "ALERTA_DEMORA", payload);
+            sseEmitterManager.publicarPorRolYSede(empresaId, "ROLE_GERENTE_SEDE", sedeId, "ALERTA_DEMORA", payload);
         }
     }
 }

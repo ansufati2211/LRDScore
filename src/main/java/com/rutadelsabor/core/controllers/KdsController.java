@@ -1,8 +1,8 @@
 package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.config.SseEmitterManager;
+import com.rutadelsabor.core.dto.response.KdsCocinaDTO;
 import com.rutadelsabor.core.dto.response.PorcionDisponibleDTO;
-import com.rutadelsabor.core.models.entities.VwKdsCocina;
 import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IKdsService;
 import org.springframework.http.MediaType;
@@ -15,11 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/kds")
-// R2 (Módulo 2): CAJERO añadido al nivel de clase para que pueda suscribirse al canal SSE
-// y recibir la escalada del nivel 2 (t=2min). Los endpoints /pendientes, /preparando y /listo
-// tienen @PreAuthorize de método que siguen excluyendo a CAJERO y MOZO.
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_CAJERO')")
+@RequestMapping("/api/v1/kds")
 public class KdsController {
 
     private final IKdsService kdsService;
@@ -31,82 +27,64 @@ public class KdsController {
     }
 
     @GetMapping("/pendientes")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<List<VwKdsCocina>> obtenerPendientes() {
-        return ResponseEntity.ok(kdsService.obtenerPedidosPendientes());
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
+    public ResponseEntity<List<KdsCocinaDTO>> obtenerPedidosPendientes(@RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(kdsService.obtenerPedidosPendientes(sedeId));
     }
 
     @PutMapping("/{id}/preparando")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<String> marcarPreparando(@PathVariable Long id, Authentication auth) {
-        UserDetailsImpl cocinero = obtenerUsuarioAutenticado(auth);
-        kdsService.marcarPreparando(id, cocinero.getUsuarioId());
-        return ResponseEntity.ok("Plato en preparación. Stock descontado del Kardex.");
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
+    public ResponseEntity<Void> marcarPreparando(@PathVariable Long id, Authentication auth) {
+        kdsService.marcarPreparando(id, obtenerUsuarioAutenticado(auth).getUsuarioId());
+        return ResponseEntity.ok().build();
     }
 
     @PutMapping("/{id}/listo")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<String> marcarListo(@PathVariable Long id) {
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
+    public ResponseEntity<Void> marcarListo(@PathVariable Long id) {
         kdsService.marcarListo(id);
-        return ResponseEntity.ok("Plato listo. Mozo notificado en tiempo real.");
+        return ResponseEntity.ok().build();
     }
 
-    // R6-1: marcar AGOTADO_TEMPORAL — reversible desde cocina
-    @PutMapping("/productos/{productoId}/agotado-temporal")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<String> marcarAgotadoTemporal(@PathVariable Long productoId) {
+    @GetMapping("/porciones")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
+    public ResponseEntity<List<PorcionDisponibleDTO>> calcularPorcionesDisponibles(@RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(kdsService.calcularPorcionesDisponibles(sedeId));
+    }
+
+    @PutMapping("/agotado-temporal/{productoId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_COCINA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<Void> marcarAgotadoTemporal(@PathVariable Long productoId) {
         kdsService.marcarAgotadoTemporal(productoId);
-        return ResponseEntity.ok("Producto marcado como AGOTADO_TEMPORAL.");
+        return ResponseEntity.ok().build();
     }
 
-    // R6-2: marcar AGOTADO_SERVICIO — bloqueado hasta cierre de caja
-    @PutMapping("/productos/{productoId}/agotado-servicio")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<String> marcarAgotadoServicio(@PathVariable Long productoId) {
+    @PutMapping("/agotado-servicio/{productoId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_COCINA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<Void> marcarAgotadoServicio(@PathVariable Long productoId) {
         kdsService.marcarAgotadoServicio(productoId);
-        return ResponseEntity.ok("Producto marcado como AGOTADO_SERVICIO.");
+        return ResponseEntity.ok().build();
     }
 
-    // E6-2: revertir AGOTADO_TEMPORAL → DISPONIBLE (AGOTADO_SERVICIO es rechazado)
-    @PutMapping("/productos/{productoId}/disponible")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<String> revertirDisponible(@PathVariable Long productoId) {
+    @PutMapping("/disponible/{productoId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_COCINA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<Void> revertirDisponible(@PathVariable Long productoId) {
         kdsService.revertirDisponible(productoId);
-        return ResponseEntity.ok("Producto restablecido a DISPONIBLE.");
+        return ResponseEntity.ok().build();
     }
 
-    // R6-5: porciones disponibles por receta — advertencia automática al mozo
-    @GetMapping("/productos/porciones")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_COCINA') or hasAuthority('ROLE_MOZO')")
-    public ResponseEntity<List<PorcionDisponibleDTO>> obtenerPorciones() {
-        return ResponseEntity.ok(kdsService.calcularPorcionesDisponibles());
-    }
-
-    /**
-     * R2-2: Endpoint SSE. El empresaId del JWT validado determina el bucket de tenant
-     * bajo el cual se registra el emitter — nunca de un parámetro de request.
-     * Acepta ?token= como fallback para EventSource (que no puede enviar headers).
-     *
-     * Eventos emitidos al tenant:
-     * NUEVO_PEDIDO       → mozo confirma pedido (BORRADOR → RECIBIDO)
-     * EN_PREPARACION     → cocina inicia preparación
-     * PEDIDO_LISTO       → cocina marca plato listo (t=0 → al mozo creador)
-     * AVISO_PEDIDO_LISTO → escalación server-side (t=1min mozos, t=2min cajeros, t=5min gerentes)
-     */
+    // FASE 7: Suscripción incluyendo la Sede
     @GetMapping(value = "/eventos", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA', 'ROLE_MOZO', 'ROLE_CAJERO')")
     public SseEmitter suscribirEventos(Authentication auth) {
         UserDetailsImpl user = obtenerUsuarioAutenticado(auth);
-        return sseEmitterManager.suscribir(user.getEmpresaId(), user.getUsuarioId(), user.getRol());
+        return sseEmitterManager.suscribir(user.getEmpresaId(), user.getUsuarioId(), user.getRol(), user.getSedeId());
     }
 
-    /**
-     * Método auxiliar para asegurar que el Authentication no sea nulo 
-     * y extraer el UserDetailsImpl de forma segura, resolviendo java:S2259.
-     */
     private UserDetailsImpl obtenerUsuarioAutenticado(Authentication auth) {
-        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl userDetails)) {
-            throw new IllegalStateException("No se pudo obtener la identidad del usuario autenticado");
+        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl user)) {
+            throw new IllegalStateException("Identidad no disponible");
         }
-        return userDetails;
+        return user;
     }
 }

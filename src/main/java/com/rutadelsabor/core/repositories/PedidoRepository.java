@@ -12,7 +12,6 @@ import java.util.List;
 
 public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
-    // Los SP se mantienen iguales porque la lógica de Sede ya se inyectó en el SQL de PostgreSQL
     @Procedure(procedureName = "sp_iniciar_preparacion")
     void iniciarPreparacionYDescontarStock(
         @Param("p_pedido_id") Long pedidoId,
@@ -31,12 +30,18 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
         @Param("p_titular") String titular
     );
 
-    // FIX: Obligamos a Spring Data a buscar también por SedeId
+    // Búsquedas Multi-Sede
     List<Pedido> findBySedeIdAndEstadoActualInOrderByCreatedAtDesc(Long sedeId, List<EstadoPedido> estados);
 
     List<Pedido> findBySedeIdAndEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
             Long sedeId, List<EstadoPedido> estados, LocalDateTime inicio, LocalDateTime fin);
 
- // Método global para el Scheduler (busca en todas las sedes)
-    List<Pedido> findByEstadoActualAndCreatedAtBefore(EstadoPedido estado, java.time.LocalDateTime fecha);           
+    // FASE 4: Métodos globales (Sin sede_id) para ROLE_ADMIN_EMPRESA
+    List<Pedido> findByEstadoActualInOrderByCreatedAtDesc(List<EstadoPedido> estados);
+
+    List<Pedido> findByEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+            List<EstadoPedido> estados, LocalDateTime inicio, LocalDateTime fin);
+
+    // FIX SCHEDULER: Búsqueda global de demorados
+    List<Pedido> findByEstadoActualAndCreatedAtBefore(EstadoPedido estado, LocalDateTime fecha);
 }

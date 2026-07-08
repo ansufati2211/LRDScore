@@ -10,4 +10,5 @@ public class EntradaAlmacenRequestDTO {
     private BigDecimal cantidad;
     private BigDecimal costoUnitario;
     private String observacion;
+    private Long sedeId;
 }

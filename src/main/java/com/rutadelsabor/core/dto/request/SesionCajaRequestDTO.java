@@ -1,13 +1,11 @@
 package com.rutadelsabor.core.dto.request;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import java.math.BigDecimal;
 
-@Getter
-@Setter
+@Data
 public class SesionCajaRequestDTO {
-    private Long cajeroId;
     private BigDecimal montoInicial;
-    private BigDecimal montoFinalDeclarado; // Este solo se usará al cerrar la caja
+    private BigDecimal montoFinalDeclarado;
+    private Long sedeId; // <-- FIX: Propiedad añadida para que el controlador lo detecte
 }

@@ -15,16 +15,15 @@ import java.util.List;
 
 public interface IPedidoService {
     Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo);
-    Pedido obtenerPedido(Long id);
-    void confirmarPedido(Long id);
-    void aplicarDescuento(Long id, BigDecimal descuento);
-    void entregarPedido(Long id);
+    Pedido confirmarPedido(Long id);
+    Pedido entregarPedido(Long id);
     void procesarPago(Long pedidoId, PagoRequestDTO pagoDTO, Long cajeroId);
-    void cancelarPedido(Long id);
-    List<PedidoActivoResponseDTO> listarPedidosActivos();
-    List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin);
-
-    // Módulo 4
+    List<PedidoActivoResponseDTO> listarPedidosActivos(Long sedeIdFiltro);
+    List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin, Long sedeIdFiltro);
+    Pedido cancelarPedido(Long id);
+    Pedido aplicarDescuento(Long id, BigDecimal monto);
+    Pedido obtenerPedido(Long id);
+    
     void agregarItemsAPedido(Long pedidoId, AgregarItemsRequestDTO dto);
     void cancelarItem(Long pedidoId, Long detalleId, String motivo, boolean esGerente);
     DocumentoCobroResponseDTO crearDocumentoCobro(Long pedidoId, DocumentoCobroRequestDTO dto);

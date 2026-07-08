@@ -7,9 +7,7 @@ import com.rutadelsabor.core.dto.response.DocumentoVentaResponseDTO;
 import com.rutadelsabor.core.exceptions.ModuloNoHabilitadoException;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.exceptions.ReglaNegocioException;
-import com.rutadelsabor.core.models.entities.DocumentoCobro;
 import com.rutadelsabor.core.models.entities.DocumentoVenta;
-import com.rutadelsabor.core.models.entities.Pedido;
 import com.rutadelsabor.core.models.enums.EstadoEmision;
 import com.rutadelsabor.core.models.enums.Modulo;
 import com.rutadelsabor.core.models.enums.TipoDocumentoVenta;
@@ -57,43 +55,34 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
     @Override
     @Transactional
     public DocumentoVentaResponseDTO emitir(EmitirDocumentoVentaRequestDTO dto) {
-        if (dto.getTipo() == null || dto.getTipo().isBlank()) {
-            throw new ReglaNegocioException("El tipo de documento es obligatorio.");
-        }
-
+        if (dto.getTipo() == null || dto.getTipo().isBlank()) throw new ReglaNegocioException("Tipo de documento obligatorio.");
+        
         TipoDocumentoVenta tipo;
-        try {
-            tipo = TipoDocumentoVenta.valueOf(dto.getTipo().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new ReglaNegocioException("Tipo de documento inválido. Use NOTA_VENTA, BOLETA o FACTURA.");
-        }
+        try { tipo = TipoDocumentoVenta.valueOf(dto.getTipo().toUpperCase()); } 
+        catch (IllegalArgumentException e) { throw new ReglaNegocioException("Tipo inválido. Use NOTA_VENTA, BOLETA o FACTURA."); }
 
         if (tipo != TipoDocumentoVenta.NOTA_VENTA) {
             List<String> modulos = suscripcionService.obtenerModulosHabilitados(TenantContext.getCurrentTenant());
-            if (!modulos.contains(Modulo.FACTURACION.name())) {
-                throw new ModuloNoHabilitadoException(Modulo.FACTURACION);
-            }
+            if (!modulos.contains(Modulo.FACTURACION.name())) throw new ModuloNoHabilitadoException(Modulo.FACTURACION);
         }
 
         if (tipo == TipoDocumentoVenta.FACTURA) validarRuc(dto.getNumeroDocumentoReceptor());
-        if (dto.getPedidoId() == null && dto.getDocumentoCobroId() == null) {
-            throw new ReglaNegocioException("Debe indicar pedidoId o documentoCobroId.");
-        }
+        if (dto.getPedidoId() == null && dto.getDocumentoCobroId() == null) throw new ReglaNegocioException("Indique pedidoId o documentoCobroId.");
 
         BigDecimal totalOrigen = resolverTotal(dto);
         BigDecimal subtotal = (tipo == TipoDocumentoVenta.NOTA_VENTA) ? totalOrigen : totalOrigen.divide(IGV_DIVISOR, 2, RoundingMode.HALF_UP);
         BigDecimal igv = totalOrigen.subtract(subtotal);
 
         Long empresaId = TenantContext.getCurrentTenant();
-        Long sedeId = TenantContext.getCurrentSede(); // MULTI-SEDE
+        Long sedeEfectiva = TenantContext.resolverSedeEfectiva(dto.getSedeId());
         String serie = serieParaTipo(tipo);
-        int correlativo = obtenerSiguienteCorrelativo(empresaId, sedeId, tipo.name(), serie);
+        int correlativo = obtenerSiguienteCorrelativo(empresaId, sedeEfectiva, tipo.name(), serie);
 
         DocumentoVenta doc = new DocumentoVenta();
         doc.setTipo(tipo);
         doc.setSerie(serie);
         doc.setCorrelativo(correlativo);
-        doc.setSedeId(sedeId); // ASIGNACIÓN DE SEDE
+        doc.setSedeId(sedeEfectiva);
         doc.setSubtotal(subtotal);
         doc.setIgv(igv);
         doc.setTotal(totalOrigen);
@@ -104,15 +93,13 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
         doc.setRazonSocialReceptor(dto.getRazonSocialReceptor());
 
         if (dto.getPedidoId() != null) {
-            Pedido pedido = pedidoRepository.findById(dto.getPedidoId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Pedido " + dto.getPedidoId() + NO_ENCONTRADO));
-            doc.setPedido(pedido);
+            doc.setPedido(pedidoRepository.findById(dto.getPedidoId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Pedido" + NO_ENCONTRADO)));
         }
 
         if (dto.getDocumentoCobroId() != null) {
-            DocumentoCobro docCobro = documentoCobroRepository.findById(dto.getDocumentoCobroId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro " + dto.getDocumentoCobroId() + NO_ENCONTRADO));
-            doc.setDocumentoCobro(docCobro);
+            doc.setDocumentoCobro(documentoCobroRepository.findById(dto.getDocumentoCobroId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoCobro" + NO_ENCONTRADO)));
         }
 
         return mapToDTO(documentoVentaRepository.save(doc));
@@ -125,7 +112,6 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
             .orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO));
         if (doc.getEstadoEmision() == EstadoEmision.ANULADO) throw new ReglaNegocioException("El comprobante ya está anulado.");
         if (dto.getMotivo() == null || dto.getMotivo().isBlank()) throw new ReglaNegocioException("Motivo obligatorio.");
-        
         doc.setEstadoEmision(EstadoEmision.ANULADO);
         doc.setMotivoAnulacion(dto.getMotivo());
         return mapToDTO(documentoVentaRepository.save(doc));
@@ -133,20 +119,20 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
 
     @Override
     @Transactional(readOnly = true)
-    public DocumentoVentaResponseDTO obtenerPorId(Long documentoId) {
-        return mapToDTO(documentoVentaRepository.findById(documentoId).orElseThrow(() -> new RecursoNoEncontradoException("DocumentoVenta " + documentoId + NO_ENCONTRADO)));
+    public DocumentoVentaResponseDTO obtenerPorId(Long id) {
+        return mapToDTO(documentoVentaRepository.findById(id).orElseThrow());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<DocumentoVentaResponseDTO> listarPorPedido(Long pedidoId) {
-        return documentoVentaRepository.findByPedidoId(pedidoId).stream().map(this::mapToDTO).toList();
+    public List<DocumentoVentaResponseDTO> listarPorPedido(Long id) {
+        return documentoVentaRepository.findByPedidoId(id).stream().map(this::mapToDTO).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<DocumentoVentaResponseDTO> listarPorDocumentoCobro(Long documentoCobroId) {
-        return documentoVentaRepository.findByDocumentoCobroId(documentoCobroId).stream().map(this::mapToDTO).toList();
+    public List<DocumentoVentaResponseDTO> listarPorDocumentoCobro(Long id) {
+        return documentoVentaRepository.findByDocumentoCobroId(id).stream().map(this::mapToDTO).toList();
     }
 
     private void validarRuc(String ruc) {
@@ -158,13 +144,10 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
     }
 
     private BigDecimal resolverTotal(EmitirDocumentoVentaRequestDTO dto) {
-        if (dto.getDocumentoCobroId() != null) {
-            return documentoCobroRepository.findById(dto.getDocumentoCobroId()).orElseThrow().getTotal();
-        }
+        if (dto.getDocumentoCobroId() != null) return documentoCobroRepository.findById(dto.getDocumentoCobroId()).orElseThrow().getTotal();
         return pedidoRepository.findById(dto.getPedidoId()).orElseThrow().getTotal();
     }
 
-    // FIX: Actualizado con sede_id para respetar la PK compuesta de Módulo 8
     @SuppressWarnings("unchecked")
     private int obtenerSiguienteCorrelativo(Long empresaId, Long sedeId, String tipo, String serie) {
         List<Number> resultado = entityManager.createNativeQuery(
@@ -179,7 +162,6 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
         .setParameter("tipo", tipo)
         .setParameter("serie", serie)
         .getResultList();
-
         if (resultado.isEmpty()) throw new IllegalStateException("Error al generar correlativo.");
         return resultado.get(0).intValue();
     }

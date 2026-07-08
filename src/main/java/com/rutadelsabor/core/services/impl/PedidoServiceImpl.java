@@ -39,6 +39,7 @@ public class PedidoServiceImpl implements IPedidoService {
     private final SseEmitterManager sseEmitterManager;
     private final IInventarioService inventarioService;
     private final DocumentoCobroRepository documentoCobroRepository;
+    private final SedeRepository sedeRepository; 
 
     public PedidoServiceImpl(PedidoRepository pedidoRepository,
                              PedidoDetalleRepository detalleRepository,
@@ -46,7 +47,8 @@ public class PedidoServiceImpl implements IPedidoService {
                              CajaRepository cajaRepository,
                              SseEmitterManager sseEmitterManager,
                              IInventarioService inventarioService,
-                             DocumentoCobroRepository documentoCobroRepository) {
+                             DocumentoCobroRepository documentoCobroRepository,
+                             SedeRepository sedeRepository) {
         this.pedidoRepository = pedidoRepository;
         this.detalleRepository = detalleRepository;
         this.productoRepository = productoRepository;
@@ -54,18 +56,27 @@ public class PedidoServiceImpl implements IPedidoService {
         this.sseEmitterManager = sseEmitterManager;
         this.inventarioService = inventarioService;
         this.documentoCobroRepository = documentoCobroRepository;
+        this.sedeRepository = sedeRepository;
+    }
+
+    // Helper de seguridad cruzada
+    private void validarSedeDeEmpresa(Long sedeIdFiltro) {
+        Sede sede = sedeRepository.findById(sedeIdFiltro)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada con ID: " + sedeIdFiltro));
+        if (!sede.getEmpresaId().equals(TenantContext.getCurrentTenant())) {
+            throw new ReglaNegocioException("La sede indicada no pertenece a su empresa.");
+        }
     }
 
     @Override
     @Transactional
     public Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo) {
         Pedido pedido = new Pedido();
-        pedido.setSedeId(TenantContext.getCurrentSede()); // <-- INYECCIÓN DE SEDE CRÍTICA
+        // FASE 5: ESCRITURA CONDICIONAL
+        pedido.setSedeId(TenantContext.resolverSedeEfectiva(dto.getSedeId()));
         pedido.setMozo(mozo);
         pedido.setTipoConsumo(dto.getTipoConsumo());
         pedido.setIdentificadorMesaReferencia(dto.getMesa());
-
-        // El pedido nace en BORRADOR (El mozo aún está tomando la orden)
         pedido.setEstadoActual(EstadoPedido.BORRADOR);
         pedido.setNotasGenerales(dto.getNotasGenerales());
 
@@ -81,7 +92,6 @@ public class PedidoServiceImpl implements IPedidoService {
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
 
-            // SEGURIDAD FINANCIERA: El backend asume el control total de los precios
             BigDecimal subtotal = producto.getPrecioVenta().multiply(new BigDecimal(item.getCantidad()));
             detalle.setPrecioUnitario(producto.getPrecioVenta());
             detalle.setSubtotal(subtotal);
@@ -93,7 +103,6 @@ public class PedidoServiceImpl implements IPedidoService {
             totalCalculado = totalCalculado.add(subtotal);
         }
 
-        // El ID de la BD sirve como número de orden (único, sin race conditions)
         pedidoGuardado.setNumeroOrden(Math.toIntExact(pedidoGuardado.getId()));
         pedidoGuardado.setSubtotal(totalCalculado);
         pedidoGuardado.setTotal(totalCalculado);
@@ -102,13 +111,12 @@ public class PedidoServiceImpl implements IPedidoService {
 
     @Override
     @Transactional
-    public void confirmarPedido(Long id) {
+    public Pedido confirmarPedido(Long id) {
         Pedido pedido = obtenerPedidoInterno(id);
         if (pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
             throw new ReglaNegocioException("Solo un pedido en BORRADOR puede ser confirmado hacia la cocina.");
         }
 
-        // E6-1: rechazar confirmación si hay productos agotados en el pedido
         List<String> agotados = pedido.getDetalles().stream()
                 .map(PedidoDetalle::getProducto)
                 .filter(p -> p.getEstadoDisponibilidad() != EstadoDisponibilidad.DISPONIBLE)
@@ -119,22 +127,21 @@ public class PedidoServiceImpl implements IPedidoService {
                     "El pedido contiene producto(s) agotado(s) y no puede confirmarse: " + String.join(", ", agotados));
         }
 
-        // R3-1: reservar insumos por receta; lanza StockInsuficienteException con detalle si falta stock
         inventarioService.reservarInsumosParaPedido(id, pedido.getDetalles());
 
         pedido.setEstadoActual(EstadoPedido.RECIBIDO);
         Long empresaId = TenantContext.getCurrentTenant();
         sseEmitterManager.publicarTenant(empresaId, "NUEVO_PEDIDO", Map.of(
                 "pedidoId", id,
-                "mesa", pedido.getIdentificadorMesaReferencia() != null
-                        ? pedido.getIdentificadorMesaReferencia() : "",
+                "mesa", pedido.getIdentificadorMesaReferencia() != null ? pedido.getIdentificadorMesaReferencia() : "",
                 "estado", "RECIBIDO"
         ));
+        return pedido;
     }
 
     @Override
     @Transactional
-    public void entregarPedido(Long id) {
+    public Pedido entregarPedido(Long id) {
         Pedido pedido = obtenerPedidoInterno(id);
 
         List<PedidoDetalle> activos = pedido.getDetalles().stream()
@@ -142,8 +149,7 @@ public class PedidoServiceImpl implements IPedidoService {
                 .toList();
 
         boolean todosListos = activos.stream()
-                .allMatch(d -> d.getEstadoItem() == EstadoItem.LISTO
-                            || d.getEstadoItem() == EstadoItem.ENTREGADO);
+                .allMatch(d -> d.getEstadoItem() == EstadoItem.LISTO || d.getEstadoItem() == EstadoItem.ENTREGADO);
         if (!todosListos) {
             throw new ReglaNegocioException("El pedido aún no está LISTO en la cocina.");
         }
@@ -153,6 +159,7 @@ public class PedidoServiceImpl implements IPedidoService {
                 .forEach(d -> d.setEstadoItem(EstadoItem.ENTREGADO));
 
         pedido.setEstadoActual(calcularEstadoAgregado(pedido.getDetalles()));
+        return pedido;
     }
 
     @Override
@@ -168,8 +175,6 @@ public class PedidoServiceImpl implements IPedidoService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sesión de caja no encontrada con ID: " + pagoDTO.getSesionCajaId()));
 
         BigDecimal sumaPagos = BigDecimal.ZERO;
-
-        // PAGO MIXTO: Iteramos sobre los múltiples métodos con los que el cliente pudo haber pagado
         for (PagoItemDTO item : pagoDTO.getPagos()) {
             pedidoRepository.registrarPago(
                     pedidoId,
@@ -183,12 +188,10 @@ public class PedidoServiceImpl implements IPedidoService {
             sumaPagos = sumaPagos.add(item.getMonto());
         }
 
-        // Validación estricta de cuadre financiero
         if (sumaPagos.compareTo(pedido.getTotal()) < 0) {
             throw new ReglaNegocioException("El monto entregado es inferior al total del pedido. Faltan S/ " + pedido.getTotal().subtract(sumaPagos));
         }
 
-        // Vincular el pedido a la sesión de caja para trazabilidad en reportes
         pedido.setSesionCaja(sesionCaja);
         pedido.setEstadoActual(EstadoPedido.PAGADO);
     }
@@ -201,13 +204,12 @@ public class PedidoServiceImpl implements IPedidoService {
 
     @Override
     @Transactional
-    public void cancelarPedido(Long id) {
+    public Pedido cancelarPedido(Long id) {
         Pedido p = obtenerPedidoInterno(id);
         if (p.getEstadoActual() == EstadoPedido.PAGADO) {
             throw new ReglaNegocioException("No se puede cancelar un pedido ya PAGADO.");
         }
 
-        // Liberar reservas solo de ítems aún PENDIENTE (recipe-based — seguro para multi-comanda)
         List<PedidoDetalle> pendientes = p.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() == EstadoItem.PENDIENTE)
                 .toList();
@@ -215,26 +217,38 @@ public class PedidoServiceImpl implements IPedidoService {
             inventarioService.liberarReservaDeItems(id, pendientes);
         }
 
-        // EN_PREPARACION / LISTO / ENTREGADO → consumo ya registrado, merma implícita
         p.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
                 .forEach(d -> d.setEstadoItem(EstadoItem.CANCELADO));
 
         p.setEstadoActual(EstadoPedido.CANCELADO);
+        return p;
     }
 
- @Override
+    @Override
     @Transactional(readOnly = true)
-    public List<PedidoActivoResponseDTO> listarPedidosActivos() {
+    public List<PedidoActivoResponseDTO> listarPedidosActivos(Long sedeIdFiltro) {
+        // FASE 5: LECTURA CONDICIONAL
+        Long sedeId = TenantContext.getCurrentSede();
         List<EstadoPedido> estados = Arrays.asList(EstadoPedido.RECIBIDO, EstadoPedido.EN_PREPARACION, EstadoPedido.LISTO, EstadoPedido.ENTREGADO);
-        // FIX: Usar el nuevo método del repositorio filtrado por Sede
-        return pedidoRepository.findBySedeIdAndEstadoActualInOrderByCreatedAtDesc(TenantContext.getCurrentSede(), estados)
-                .stream().map(this::mapToActivoResponseDTO).toList();
+        List<Pedido> pedidos;
+
+        if (sedeId != null) {
+            pedidos = pedidoRepository.findBySedeIdAndEstadoActualInOrderByCreatedAtDesc(sedeId, estados);
+        } else {
+            if (sedeIdFiltro != null) {
+                validarSedeDeEmpresa(sedeIdFiltro);
+                pedidos = pedidoRepository.findBySedeIdAndEstadoActualInOrderByCreatedAtDesc(sedeIdFiltro, estados);
+            } else {
+                pedidos = pedidoRepository.findByEstadoActualInOrderByCreatedAtDesc(estados);
+            }
+        }
+        return pedidos.stream().map(this::mapToActivoResponseDTO).toList();
     }
 
     @Override
     @Transactional
-    public void aplicarDescuento(Long id, BigDecimal descuento) {
+    public Pedido aplicarDescuento(Long id, BigDecimal descuento) {
         Pedido pedido = obtenerPedidoInterno(id);
         if (pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
             throw new ReglaNegocioException("El descuento solo puede aplicarse a pedidos en estado BORRADOR.");
@@ -244,15 +258,31 @@ public class PedidoServiceImpl implements IPedidoService {
         }
         pedido.setDescuento(descuento);
         pedido.setTotal(pedido.getSubtotal().subtract(descuento));
+        return pedido;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin) {
+    public List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin, Long sedeIdFiltro) {
+        // FASE 5: LECTURA CONDICIONAL
+        Long sedeId = TenantContext.getCurrentSede();
         List<EstadoPedido> hist = Arrays.asList(EstadoPedido.PAGADO, EstadoPedido.CANCELADO);
-        return pedidoRepository.findBySedeIdAndEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
-                TenantContext.getCurrentSede(), hist, inicio.atStartOfDay(), fin.atTime(23, 59, 59))
-                .stream().map(this::mapToActivoResponseDTO).toList();
+        List<Pedido> pedidos;
+
+        if (sedeId != null) {
+            pedidos = pedidoRepository.findBySedeIdAndEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+                    sedeId, hist, inicio.atStartOfDay(), fin.atTime(23, 59, 59));
+        } else {
+            if (sedeIdFiltro != null) {
+                validarSedeDeEmpresa(sedeIdFiltro);
+                pedidos = pedidoRepository.findBySedeIdAndEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+                        sedeIdFiltro, hist, inicio.atStartOfDay(), fin.atTime(23, 59, 59));
+            } else {
+                pedidos = pedidoRepository.findByEstadoActualInAndCreatedAtBetweenOrderByCreatedAtDesc(
+                        hist, inicio.atStartOfDay(), fin.atTime(23, 59, 59));
+            }
+        }
+        return pedidos.stream().map(this::mapToActivoResponseDTO).toList();
     }
 
     // --- MÓDULO 4 ---
@@ -267,7 +297,6 @@ public class PedidoServiceImpl implements IPedidoService {
             throw new ReglaNegocioException("No se pueden agregar ítems a un pedido en estado " + estado + ".");
         }
 
-        // Determinar el número de comanda siguiente
         int nuevaComanda = pedido.getDetalles().stream()
                 .mapToInt(d -> d.getNumeroComanda() != null ? d.getNumeroComanda() : 1)
                 .max()
@@ -292,10 +321,8 @@ public class PedidoServiceImpl implements IPedidoService {
             return detalleRepository.save(detalle);
         }).toList();
 
-        // R4-2: reservar inventario solo de los nuevos ítems
         inventarioService.reservarInsumosParaPedido(pedidoId, nuevosDetalles);
 
-        // Actualizar totales del pedido
         BigDecimal incremento = nuevosDetalles.stream()
                 .map(PedidoDetalle::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -303,14 +330,11 @@ public class PedidoServiceImpl implements IPedidoService {
         pedido.setTotal(pedido.getSubtotal().subtract(
                 pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO));
 
-        // E4-2: con nuevos ítems PENDIENTE, el pedido retrocede si estaba en estado final de cocina
         if (estado == EstadoPedido.LISTO || estado == EstadoPedido.ENTREGADO) {
             pedido.setEstadoActual(EstadoPedido.RECIBIDO);
         }
-        // RECIBIDO y EN_PREPARACION no cambian — ya tienen ítems activos pendientes
         pedidoRepository.save(pedido);
 
-        // R4-2: notificar a cocina solo los ítems nuevos
         Long empresaId = TenantContext.getCurrentTenant();
         sseEmitterManager.publicarTenant(empresaId, "NUEVA_COMANDA", Map.of(
                 "pedidoId", pedidoId,
@@ -341,28 +365,22 @@ public class PedidoServiceImpl implements IPedidoService {
             throw new ReglaNegocioException("El ítem ya está cancelado.");
         }
 
-        // E4-1: cancelar un ítem ENTREGADO requiere GERENTE y motivo obligatorio
         if (detalle.getEstadoItem() == EstadoItem.ENTREGADO) {
             if (!esGerente) {
-                throw new ReglaNegocioException("Cancelar un ítem ya ENTREGADO requiere rol GERENTE.");
+                throw new ReglaNegocioException("Cancelar un ítem ya ENTREGADO requiere rol GERENTE o ADMIN.");
             }
             if (motivo == null || motivo.isBlank()) {
                 throw new ReglaNegocioException("Se requiere un motivo para cancelar un ítem ENTREGADO (auditoría).");
             }
         }
 
-        // R4-6: lógica de inventario según estado del ítem
         if (detalle.getEstadoItem() == EstadoItem.PENDIENTE) {
-            // Solo reservado → liberar reserva recipe-based
             inventarioService.liberarReservaDeItems(pedidoId, List.of(detalle));
         }
-        // EN_PREPARACION / LISTO / ENTREGADO → CONSUMO_PRODUCCION ya registrado, merma implícita
 
         detalle.setEstadoItem(EstadoItem.CANCELADO);
         detalle.setMotivoCancelacion(motivo);
 
-        // Recalcular subtotal/total excluyendo el ítem recién cancelado — sin esto, el pedido
-        // queda cobrando (directo o por split) el monto de ítems que ya no están en la cuenta.
         BigDecimal nuevoSubtotal = pedido.getDetalles().stream()
                 .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
                 .map(PedidoDetalle::getSubtotal)
@@ -371,7 +389,6 @@ public class PedidoServiceImpl implements IPedidoService {
         pedido.setTotal(nuevoSubtotal.subtract(
                 pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO));
 
-        // R4-7: recalcular estado agregado
         pedido.setEstadoActual(calcularEstadoAgregado(pedido.getDetalles()));
         pedidoRepository.save(pedido);
     }
@@ -446,7 +463,6 @@ public class PedidoServiceImpl implements IPedidoService {
             sumaPagos = sumaPagos.add(item.getMonto());
         }
 
-        // E4-3: el documento no puede cerrarse si el monto entregado no cubre su total
         if (sumaPagos.compareTo(doc.getTotal()) < 0) {
             throw new ReglaNegocioException("El monto entregado no cubre el total del documento. Faltan S/ "
                     + doc.getTotal().subtract(sumaPagos));
@@ -456,7 +472,6 @@ public class PedidoServiceImpl implements IPedidoService {
         pedido.setSesionCaja(sesionCaja);
         documentoCobroRepository.save(doc);
 
-        // R4-4: pedido PAGADO solo cuando suma de documentos PAGADO >= total del pedido
         BigDecimal totalPagado = documentoCobroRepository.findByPedidoId(pedido.getId()).stream()
                 .filter(d -> "PAGADO".equals(d.getEstado()))
                 .map(DocumentoCobro::getTotal)
@@ -491,9 +506,6 @@ public class PedidoServiceImpl implements IPedidoService {
         return EstadoPedido.ENTREGADO;
     }
     
-    /**
-     * Método auxiliar privado para evitar el bypass del proxy de Spring AOP al llamar a métodos transaccionales internamente.
-     */
     private Pedido obtenerPedidoInterno(Long id) {
         return pedidoRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pedido no encontrado con ID: " + id));

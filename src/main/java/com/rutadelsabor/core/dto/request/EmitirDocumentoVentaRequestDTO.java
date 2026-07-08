@@ -19,4 +19,5 @@ public class EmitirDocumentoVentaRequestDTO {
     private String tipoDocumentoReceptor;   // "DNI" | "RUC" | "CE" | "CONSUMIDOR_FINAL"
     private String numeroDocumentoReceptor;
     private String razonSocialReceptor;
+    private Long sedeId;
 }

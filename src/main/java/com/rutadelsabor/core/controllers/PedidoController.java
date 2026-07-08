@@ -25,7 +25,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/pedidos")
+@RequestMapping("/api/v1/pedidos")
 public class PedidoController {
 
     private final IPedidoService pedidoService;
@@ -38,33 +38,30 @@ public class PedidoController {
         this.ticketManager = ticketManager;
     }
 
-    // R1-1 (CRÍTICA): ROLE_COCINA excluido explícitamente — única línea de defensa dura en modo kiosco.
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
     public ResponseEntity<Pedido> crearPedido(@RequestBody PedidoRequestDTO dto, Authentication auth) {
         Usuario mozo = usuarioRepository.findByCorreo(auth.getName())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Mozo no encontrado"));
         return ResponseEntity.ok(pedidoService.crearPedido(dto, mozo));
     }
 
-    // R1-1: ROLE_COCINA excluido — solo puede cambiar estados en /api/kds/*, no confirmar pedidos.
     @PutMapping("/{id}/confirmar")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
     public ResponseEntity<String> confirmarPedido(@PathVariable Long id) {
         pedidoService.confirmarPedido(id);
         return ResponseEntity.ok("Pedido confirmado y enviado a cocina.");
     }
 
-    // R1-1: ROLE_COCINA excluido — la entrega la marca el mozo, no la cocina.
     @PutMapping("/{id}/entregar")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
     public ResponseEntity<String> entregarPedido(@PathVariable Long id) {
         pedidoService.entregarPedido(id);
         return ResponseEntity.ok("Pedido marcado como entregado a la mesa.");
     }
 
     @PostMapping("/{id}/pagar")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<String> procesarPago(
             @PathVariable Long id, 
             @RequestBody PagoRequestDTO pago, 
@@ -75,49 +72,49 @@ public class PedidoController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<Pedido> obtenerPedido(@PathVariable Long id) {
         return ResponseEntity.ok(pedidoService.obtenerPedido(id));
     }
 
     @GetMapping("/activos")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_COCINA')")
-    public ResponseEntity<List<PedidoActivoResponseDTO>> listarPedidosActivos() {
-        return ResponseEntity.ok(pedidoService.listarPedidosActivos());
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO', 'ROLE_COCINA')")
+    public ResponseEntity<List<PedidoActivoResponseDTO>> listarPedidosActivos(
+            @RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(pedidoService.listarPedidosActivos(sedeId));
     }
 
     @GetMapping("/historial")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<List<PedidoActivoResponseDTO>> listarHistorial(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
-        return ResponseEntity.ok(pedidoService.listarHistorial(inicio, fin));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(pedidoService.listarHistorial(inicio, fin, sedeId));
     }
 
     @PutMapping("/{id}/descuento")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> aplicarDescuento(@PathVariable Long id, @RequestParam BigDecimal monto) {
         pedidoService.aplicarDescuento(id, monto);
         return ResponseEntity.ok("Descuento de S/ " + monto + " aplicado al pedido.");
     }
 
     @PutMapping("/{id}/cancelar")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> cancelarPedido(@PathVariable Long id) {
         pedidoService.cancelarPedido(id);
         return ResponseEntity.ok("Pedido anulado exitosamente.");
     }
 
-    // R2-5: ACK informacional — el cliente del mozo confirma que recibió el aviso PEDIDO_LISTO.
-    // No detiene la cascada de escalación server-side, que corre por tiempo independientemente.
     @PostMapping("/{id}/notificacion/ack")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO', 'ROLE_CAJERO')")
     public ResponseEntity<Void> ackNotificacion(@PathVariable Long id) {
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/ticket")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<String> imprimirTicket(@PathVariable Long id) {
         Pedido pedido = pedidoService.obtenerPedido(id);
         return ResponseEntity.ok()
@@ -125,51 +122,45 @@ public class PedidoController {
                 .body(ticketManager.generarTicketTermico(pedido));
     }
 
-    // --- MÓDULO 4 ---
-
-    // R4-1/R4-2: agregar ítems a un pedido confirmado; reserva y notifica solo los nuevos
     @PostMapping("/{id}/items")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
     public ResponseEntity<String> agregarItems(@PathVariable Long id,
                                                @RequestBody AgregarItemsRequestDTO dto) {
         pedidoService.agregarItemsAPedido(id, dto);
         return ResponseEntity.ok("Ítems agregados y enviados a cocina.");
     }
 
-    // R4-5/R4-6/E4-1: cancelar ítem individual; ENTREGADO requiere GERENTE y motivo
     @PutMapping("/{id}/items/{detalleId}/cancelar")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
     public ResponseEntity<String> cancelarItem(@PathVariable Long id,
                                                @PathVariable Long detalleId,
                                                @RequestBody(required = false) CancelarItemRequestDTO dto,
                                                Authentication auth) {
         boolean esGerente = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_GERENTE")
+                .anyMatch(a -> a.getAuthority().equals("ROLE_GERENTE_SEDE")
+                            || a.getAuthority().equals("ROLE_ADMIN_EMPRESA")
                             || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
         String motivo = dto != null ? dto.getMotivo() : null;
         pedidoService.cancelarItem(id, detalleId, motivo, esGerente);
-        return ResponseEntity.ok("Ítem cancelado.");
+        return ResponseEntity.ok("Ítems cancelados.");
     }
 
-    // R4-3: crear documento de cobro (split por ítem o por monto)
     @PostMapping("/{id}/documentos-cobro")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<DocumentoCobroResponseDTO> crearDocumentoCobro(
             @PathVariable Long id,
             @RequestBody DocumentoCobroRequestDTO dto) {
         return ResponseEntity.ok(pedidoService.crearDocumentoCobro(id, dto));
     }
 
-    // R4-3/R4-4: listar documentos de cobro de un pedido
     @GetMapping("/{id}/documentos-cobro")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<List<DocumentoCobroResponseDTO>> listarDocumentosCobro(@PathVariable Long id) {
         return ResponseEntity.ok(pedidoService.listarDocumentosCobro(id));
     }
 
-    // R4-4/E4-3: pagar un documento de cobro individual
     @PostMapping("/documentos-cobro/{documentoId}/pagar")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<DocumentoCobroResponseDTO> pagarDocumentoCobro(
             @PathVariable Long documentoId,
             @RequestBody PagoRequestDTO pago,
@@ -178,10 +169,6 @@ public class PedidoController {
         return ResponseEntity.ok(pedidoService.pagarDocumentoCobro(documentoId, pago, cajeroId));
     }
 
-    /**
-     * Método auxiliar para validar el Authentication y extraer el ID del usuario
-     * de forma segura, resolviendo java:S2259.
-     */
     private Long obtenerUsuarioIdAutenticado(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl cajero)) {
             throw new IllegalStateException("No se pudo obtener la identidad del usuario autenticado");

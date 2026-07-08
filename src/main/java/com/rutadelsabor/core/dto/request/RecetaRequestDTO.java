@@ -6,6 +6,6 @@ import java.math.BigDecimal;
 @Data
 public class RecetaRequestDTO {
     private Long insumoId;
-    private BigDecimal cantidadRequerida; // <-- FIX APLICADO
+    private BigDecimal cantidad;
     private String unidadMedida;
 }

@@ -12,8 +12,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/caja")
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE') or hasAuthority('ROLE_CAJERO')")
+@RequestMapping("/api/v1/caja")
+@PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
 public class CajaController {
 
     private final ICajaService cajaService;
@@ -25,7 +25,7 @@ public class CajaController {
     @PostMapping("/abrir")
     public ResponseEntity<SesionCaja> abrirCaja(@RequestBody SesionCajaRequestDTO dto, Authentication auth) {
         Long usuarioId = obtenerUsuarioIdAutenticado(auth);
-        return ResponseEntity.ok(cajaService.abrirCaja(usuarioId, dto.getMontoInicial()));
+        return ResponseEntity.ok(cajaService.abrirCaja(usuarioId, dto.getMontoInicial(), dto.getSedeId()));
     }
 
     @PutMapping("/cerrar/{id}")
@@ -34,24 +34,23 @@ public class CajaController {
     }
 
     @GetMapping("/activa")
-    public ResponseEntity<SesionCaja> obtenerCajaActiva(Authentication auth) {
+    public ResponseEntity<SesionCaja> obtenerCajaActiva(
+            @RequestParam(required = false) Long sedeId,
+            Authentication auth) {
         Long usuarioId = obtenerUsuarioIdAutenticado(auth);
-        return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(usuarioId));
+        return ResponseEntity.ok(cajaService.obtenerCajaActivaPorCajero(usuarioId, sedeId));
     }
 
     @GetMapping("/historial")
-    public ResponseEntity<List<SesionCaja>> listarHistorial(Authentication auth) {
+    public ResponseEntity<List<SesionCaja>> listarHistorial(
+            @RequestParam(required = false) Long sedeId,
+            Authentication auth) {
         Long usuarioId = obtenerUsuarioIdAutenticado(auth);
-        return ResponseEntity.ok(cajaService.listarHistorialPorCajero(usuarioId));
+        return ResponseEntity.ok(cajaService.listarHistorialPorCajero(usuarioId, sedeId));
     }
 
-    /**
-     * Método auxiliar para extraer el ID del usuario de forma segura 
-     * y evitar advertencias de NullPointerException (java:S2259).
-     */
     private Long obtenerUsuarioIdAutenticado(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl cajero)) {
-            // Se puede lanzar tu ReglaNegocioException si prefieres un manejo global de errores
             throw new IllegalStateException("No se pudo obtener la identidad del usuario autenticado");
         }
         return cajero.getUsuarioId();

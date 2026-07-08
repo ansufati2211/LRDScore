@@ -10,4 +10,5 @@ public class AjusteInventarioRequestDTO {
     private BigDecimal cantidad;
     private Boolean esPositivo; // true = sobra stock, false = falta stock
     private String motivo;
+    private Long sedeId;
 }

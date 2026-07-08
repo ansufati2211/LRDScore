@@ -7,57 +7,57 @@ import com.rutadelsabor.core.models.enums.Modulo;
 import com.rutadelsabor.core.services.interfaces.IReporteService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 
 @RestController
-@RequestMapping("/api/reportes")
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_GERENTE')")
+@RequestMapping("/api/v1/reportes")
 public class ReporteController {
 
-    // 1. Declaramos la dependencia como final e inmutable
     private final IReporteService reporteService;
 
-    // 2. Inyección por Constructor (Resuelve de raíz java:S6813)
-    // Spring Boot inyectará automáticamente el Bean correspondiente en tiempo de ejecución.
     public ReporteController(IReporteService reporteService) {
         this.reporteService = reporteService;
     }
 
-    // Endpoint para el gráfico de React
-    @GetMapping("/dashboard")
-    public ResponseEntity<DashboardVentasDTO> obtenerDashboard(
+    @GetMapping("/ventas/dashboard")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    @RequiereModulo(Modulo.REPORTES_AVANZADOS)
+    public ResponseEntity<DashboardVentasDTO> obtenerDashboardVentas(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
-        
         return ResponseEntity.ok(reporteService.obtenerResumenVentas(inicio, fin));
     }
 
-    // R5-2/E5-3: gateado por ModuloInterceptor — lanza ModuloNoHabilitadoException si el plan no incluye REPORTES_AVANZADOS
-    @GetMapping("/margen")
+    @GetMapping("/ventas/exportar-excel")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
     @RequiereModulo(Modulo.REPORTES_AVANZADOS)
-    public ResponseEntity<MargenVentasDTO> obtenerMargen(
+    public ResponseEntity<byte[]> exportarVentasExcel(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
-
-        return ResponseEntity.ok(reporteService.obtenerMargenVentas(inicio, fin));
+        
+        byte[] excelBytes = reporteService.exportarVentasExcel(inicio, fin);
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-Disposition", "attachment; filename=reporte_ventas.xlsx");
+        headers.add("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        
+        return new ResponseEntity<>(excelBytes, headers, HttpStatus.OK);
     }
 
-    // Endpoint para descargar el Excel
-    @GetMapping("/excel")
-    public ResponseEntity<byte[]> descargarExcel(
+    @GetMapping("/ventas/margen")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    @RequiereModulo(Modulo.REPORTES_AVANZADOS)
+    public ResponseEntity<MargenVentasDTO> obtenerMargenVentas(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
-
-        byte[] excelBytes = reporteService.exportarVentasExcel(inicio, fin);
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=reporte_ventas.xlsx")
-                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .body(excelBytes);
+        return ResponseEntity.ok(reporteService.obtenerMargenVentas(inicio, fin));
     }
 }

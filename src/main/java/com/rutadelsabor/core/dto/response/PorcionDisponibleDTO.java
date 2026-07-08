@@ -1,15 +1,22 @@
 package com.rutadelsabor.core.dto.response;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import java.math.BigDecimal;
 
-@Getter
-@Setter
+@Data
 public class PorcionDisponibleDTO {
     private Long productoId;
-    private String producto;
-    // null si el producto no tiene receta cargada
+    private String nombreProducto; // FIX: añadido
     private BigDecimal porcionesDisponibles;
-    private String estadoDisponibilidad;
+    private String nivelAdvertencia; // FIX: añadido
+
+    // FIX: Setter sobrecargado para aceptar Integer y mantener compatibilidad con el servicio
+    public void setPorcionesDisponibles(Integer porciones) {
+        this.porcionesDisponibles = new BigDecimal(porciones);
+    }
+    
+    // Método original para soportar inyección de BigDecimal si fuera necesario
+    public void setPorcionesDisponibles(BigDecimal porcionesDisponibles) {
+        this.porcionesDisponibles = porcionesDisponibles;
+    }
 }

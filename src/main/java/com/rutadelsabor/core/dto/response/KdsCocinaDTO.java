@@ -1,21 +1,30 @@
 package com.rutadelsabor.core.dto.response;
 
-import lombok.Getter;
-import lombok.Setter;
-import java.time.LocalDateTime;
+import lombok.Data;
+import java.time.OffsetDateTime;
+import java.util.List;
 
-@Getter
-@Setter
+@Data
 public class KdsCocinaDTO {
-    private Long detalleId;
     private Long pedidoId;
+    private Integer numeroOrden; // FIX: añadido
+    private String tipoConsumo;  // FIX: añadido
     private String mesa;
-    private String producto;
-    private Integer cantidad;
     private String estadoPedido;
-    private String notasPreparacion;
-    private LocalDateTime fechaPedido;
-    
-    // Estos campos adicionales pueden ser útiles más adelante cuando conectes el frontend
-    private String tiempoEsperaTranscurrido; 
+    private String notasGenerales; // FIX: añadido
+    private OffsetDateTime horaIngreso; // FIX: añadido
+    private Double minutosTranscurridos; // FIX: añadido
+    private List<KdsItemDTO> items;
+
+    // FIX: Clase anidada interna que el servicio necesita para procesar los detalles
+    @Data
+    public static class KdsItemDTO {
+        private Long detalleId;
+        private String producto;
+        private Integer cantidad;
+        private String notasPreparacion;
+        private Integer tiempoPreparacionMinutos;
+        private String estadoItem;
+        private Integer numeroComanda;
+    }
 }
