@@ -16,17 +16,23 @@ import java.time.LocalDate;
 @Setter
 @Immutable
 public class VwDashboardVentas {
+    
     @Id
     @Column(name = "id")
     private Long id;
+    
     @Column(name = "fecha")
     private LocalDate fecha;
+    
     @Column(name = "total_ingresos")
     private BigDecimal totalIngresos;
+    
     @Column(name = "cantidad_pedidos")
     private Long cantidadPedidos;
+    
     @Column(name = "empresa_id")
     private Long empresaId;
+    
     @Column(name = "sede_id")
-    private Long sedeId; // <-- AÑADIDO PARA MULTI-SEDE
+    private Long sedeId; 
 }

@@ -23,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +58,6 @@ public class PedidoServiceImpl implements IPedidoService {
         this.sedeRepository = sedeRepository;
     }
 
-    // Helper de seguridad cruzada
     private void validarSedeDeEmpresa(Long sedeIdFiltro) {
         Sede sede = sedeRepository.findById(sedeIdFiltro)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada con ID: " + sedeIdFiltro));
@@ -72,7 +70,6 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo) {
         Pedido pedido = new Pedido();
-        // FASE 5: ESCRITURA CONDICIONAL
         pedido.setSedeId(TenantContext.resolverSedeEfectiva(dto.getSedeId()));
         pedido.setMozo(mozo);
         pedido.setTipoConsumo(dto.getTipoConsumo());
@@ -131,9 +128,15 @@ public class PedidoServiceImpl implements IPedidoService {
 
         pedido.setEstadoActual(EstadoPedido.RECIBIDO);
         Long empresaId = TenantContext.getCurrentTenant();
+        
+        String mesaSegura = pedido.getIdentificadorMesaReferencia();
+        if (mesaSegura == null || mesaSegura.trim().isEmpty()) {
+            mesaSegura = "Barra";
+        }
+        
         sseEmitterManager.publicarTenant(empresaId, "NUEVO_PEDIDO", Map.of(
                 "pedidoId", id,
-                "mesa", pedido.getIdentificadorMesaReferencia() != null ? pedido.getIdentificadorMesaReferencia() : "",
+                "mesa", mesaSegura,
                 "estado", "RECIBIDO"
         ));
         return pedido;
@@ -144,22 +147,18 @@ public class PedidoServiceImpl implements IPedidoService {
     public Pedido entregarPedido(Long id) {
         Pedido pedido = obtenerPedidoInterno(id);
 
-        List<PedidoDetalle> activos = pedido.getDetalles().stream()
-                .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
-                .toList();
+        // 🔥 Se elimina la restricción estricta. El mozo ahora puede marcar el pedido 
+        // como ENTREGADO directamente, forzando también el estado de sus detalles.
+        
+        pedido.setEstadoActual(EstadoPedido.ENTREGADO);
 
-        boolean todosListos = activos.stream()
-                .allMatch(d -> d.getEstadoItem() == EstadoItem.LISTO || d.getEstadoItem() == EstadoItem.ENTREGADO);
-        if (!todosListos) {
-            throw new ReglaNegocioException("El pedido aún no está LISTO en la cocina.");
-        }
+        pedido.getDetalles().forEach(detalle -> {
+            if (detalle.getEstadoItem() != EstadoItem.CANCELADO) {
+                detalle.setEstadoItem(EstadoItem.ENTREGADO);
+            }
+        });
 
-        activos.stream()
-                .filter(d -> d.getEstadoItem() == EstadoItem.LISTO)
-                .forEach(d -> d.setEstadoItem(EstadoItem.ENTREGADO));
-
-        pedido.setEstadoActual(calcularEstadoAgregado(pedido.getDetalles()));
-        return pedido;
+        return pedidoRepository.save(pedido);
     }
 
     @Override
@@ -206,15 +205,17 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public Pedido cancelarPedido(Long id) {
         Pedido p = obtenerPedidoInterno(id);
-        if (p.getEstadoActual() == EstadoPedido.PAGADO) {
-            throw new ReglaNegocioException("No se puede cancelar un pedido ya PAGADO.");
+        if (p.getEstadoActual() == EstadoPedido.PAGADO || p.getEstadoActual() == EstadoPedido.CANCELADO) {
+            throw new ReglaNegocioException("No se puede cancelar un pedido " + p.getEstadoActual() + ".");
         }
 
-        List<PedidoDetalle> pendientes = p.getDetalles().stream()
-                .filter(d -> d.getEstadoItem() == EstadoItem.PENDIENTE)
-                .toList();
-        if (!pendientes.isEmpty()) {
-            inventarioService.liberarReservaDeItems(id, pendientes);
+        if (p.getEstadoActual() != EstadoPedido.BORRADOR) {
+            List<PedidoDetalle> pendientes = p.getDetalles().stream()
+                    .filter(d -> d.getEstadoItem() == EstadoItem.PENDIENTE || d.getEstadoItem() == EstadoItem.EN_PREPARACION)
+                    .toList();
+            if (!pendientes.isEmpty()) {
+                inventarioService.liberarReservaDeItems(id, pendientes);
+            }
         }
 
         p.getDetalles().stream()
@@ -222,17 +223,80 @@ public class PedidoServiceImpl implements IPedidoService {
                 .forEach(d -> d.setEstadoItem(EstadoItem.CANCELADO));
 
         p.setEstadoActual(EstadoPedido.CANCELADO);
-        return p;
+        return pedidoRepository.save(p);
+    }
+
+    @Override
+    @Transactional
+    public void cancelarItem(Long pedidoId, Long detalleId, String motivo, boolean esGerente) {
+        Pedido pedido = obtenerPedidoInterno(pedidoId);
+
+        if (pedido.getEstadoActual() == EstadoPedido.PAGADO || pedido.getEstadoActual() == EstadoPedido.CANCELADO) {
+            throw new ReglaNegocioException("No se puede cancelar ítems de un pedido " + pedido.getEstadoActual() + ".");
+        }
+
+        PedidoDetalle detalle = pedido.getDetalles().stream()
+                .filter(d -> d.getId().equals(detalleId))
+                .findFirst()
+                .orElseThrow(() -> new RecursoNoEncontradoException("Ítem no encontrado en el pedido"));
+
+        if (detalle.getEstadoItem() == EstadoItem.CANCELADO) {
+            throw new ReglaNegocioException("El ítem ya está cancelado.");
+        }
+
+        if (detalle.getEstadoItem() == EstadoItem.ENTREGADO) {
+            if (!esGerente) {
+                throw new ReglaNegocioException("Cancelar un ítem ya ENTREGADO requiere rol GERENTE o ADMIN.");
+            }
+            if (motivo == null || motivo.isBlank()) {
+                throw new ReglaNegocioException("Se requiere un motivo para cancelar un ítem ENTREGADO (auditoría).");
+            }
+        }
+
+        if (detalle.getEstadoItem() == EstadoItem.PENDIENTE && pedido.getEstadoActual() != EstadoPedido.BORRADOR) {
+            inventarioService.liberarReservaDeItems(pedidoId, List.of(detalle));
+        }
+
+        detalle.setEstadoItem(EstadoItem.CANCELADO);
+        detalle.setMotivoCancelacion(motivo);
+
+        BigDecimal nuevoSubtotal = pedido.getDetalles().stream()
+                .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
+                .map(PedidoDetalle::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        pedido.setSubtotal(nuevoSubtotal);
+        
+        BigDecimal descuento = pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO;
+        BigDecimal nuevoTotal = nuevoSubtotal.subtract(descuento);
+        if (nuevoTotal.compareTo(BigDecimal.ZERO) < 0) {
+            nuevoTotal = BigDecimal.ZERO;
+        }
+        pedido.setTotal(nuevoTotal);
+
+        EstadoPedido nuevoEstado = calcularEstadoAgregado(pedido.getDetalles());
+        if (pedido.getEstadoActual() == EstadoPedido.BORRADOR && nuevoEstado == EstadoPedido.RECIBIDO) {
+            nuevoEstado = EstadoPedido.BORRADOR;
+        }
+        
+        pedido.setEstadoActual(nuevoEstado);
+        pedidoRepository.save(pedido);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<PedidoActivoResponseDTO> listarPedidosActivos(Long sedeIdFiltro) {
-        // FASE 5: LECTURA CONDICIONAL
         Long sedeId = TenantContext.getCurrentSede();
-        List<EstadoPedido> estados = Arrays.asList(EstadoPedido.RECIBIDO, EstadoPedido.EN_PREPARACION, EstadoPedido.LISTO, EstadoPedido.ENTREGADO);
+        
+        List<EstadoPedido> estados = Arrays.asList(
+                EstadoPedido.BORRADOR, 
+                EstadoPedido.RECIBIDO, 
+                EstadoPedido.EN_PREPARACION, 
+                EstadoPedido.LISTO, 
+                EstadoPedido.ENTREGADO
+        );
+        
         List<Pedido> pedidos;
-
         if (sedeId != null) {
             pedidos = pedidoRepository.findBySedeIdAndEstadoActualInOrderByCreatedAtDesc(sedeId, estados);
         } else {
@@ -264,7 +328,6 @@ public class PedidoServiceImpl implements IPedidoService {
     @Override
     @Transactional(readOnly = true)
     public List<PedidoActivoResponseDTO> listarHistorial(LocalDate inicio, LocalDate fin, Long sedeIdFiltro) {
-        // FASE 5: LECTURA CONDICIONAL
         Long sedeId = TenantContext.getCurrentSede();
         List<EstadoPedido> hist = Arrays.asList(EstadoPedido.PAGADO, EstadoPedido.CANCELADO);
         List<Pedido> pedidos;
@@ -345,52 +408,6 @@ public class PedidoServiceImpl implements IPedidoService {
                         "cantidad", d.getCantidad()
                 )).toList()
         ));
-    }
-
-    @Override
-    @Transactional
-    public void cancelarItem(Long pedidoId, Long detalleId, String motivo, boolean esGerente) {
-        Pedido pedido = obtenerPedidoInterno(pedidoId);
-
-        if (pedido.getEstadoActual() == EstadoPedido.PAGADO || pedido.getEstadoActual() == EstadoPedido.CANCELADO) {
-            throw new ReglaNegocioException("No se puede cancelar ítems de un pedido " + pedido.getEstadoActual() + ".");
-        }
-
-        PedidoDetalle detalle = pedido.getDetalles().stream()
-                .filter(d -> d.getId().equals(detalleId))
-                .findFirst()
-                .orElseThrow(() -> new RecursoNoEncontradoException("Ítem no encontrado en el pedido"));
-
-        if (detalle.getEstadoItem() == EstadoItem.CANCELADO) {
-            throw new ReglaNegocioException("El ítem ya está cancelado.");
-        }
-
-        if (detalle.getEstadoItem() == EstadoItem.ENTREGADO) {
-            if (!esGerente) {
-                throw new ReglaNegocioException("Cancelar un ítem ya ENTREGADO requiere rol GERENTE o ADMIN.");
-            }
-            if (motivo == null || motivo.isBlank()) {
-                throw new ReglaNegocioException("Se requiere un motivo para cancelar un ítem ENTREGADO (auditoría).");
-            }
-        }
-
-        if (detalle.getEstadoItem() == EstadoItem.PENDIENTE) {
-            inventarioService.liberarReservaDeItems(pedidoId, List.of(detalle));
-        }
-
-        detalle.setEstadoItem(EstadoItem.CANCELADO);
-        detalle.setMotivoCancelacion(motivo);
-
-        BigDecimal nuevoSubtotal = pedido.getDetalles().stream()
-                .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
-                .map(PedidoDetalle::getSubtotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        pedido.setSubtotal(nuevoSubtotal);
-        pedido.setTotal(nuevoSubtotal.subtract(
-                pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO));
-
-        pedido.setEstadoActual(calcularEstadoAgregado(pedido.getDetalles()));
-        pedidoRepository.save(pedido);
     }
 
     @Override
@@ -493,8 +510,6 @@ public class PedidoServiceImpl implements IPedidoService {
                 .toList();
     }
 
-    // --- helpers privados ---
-
     private static EstadoPedido calcularEstadoAgregado(List<PedidoDetalle> detalles) {
         List<PedidoDetalle> activos = detalles.stream()
                 .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO)
@@ -554,4 +569,6 @@ public class PedidoServiceImpl implements IPedidoService {
                 .toList());
         return dto;
     }
+
+    
 }

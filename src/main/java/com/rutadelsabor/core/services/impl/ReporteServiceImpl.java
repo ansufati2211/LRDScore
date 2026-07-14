@@ -43,55 +43,72 @@ public class ReporteServiceImpl implements IReporteService {
 
     @Override
     @Transactional(readOnly = true)
-    public DashboardVentasDTO obtenerResumenVentas(LocalDate inicio, LocalDate fin) {
+    public DashboardVentasDTO obtenerResumenVentas(LocalDate inicio, LocalDate fin, Long paramSedeId) {
         validarRangoFechas(inicio, fin);
-
-        Long sedeId = TenantContext.getCurrentSede();
+        Long sedeId = paramSedeId != null ? paramSedeId : TenantContext.getCurrentSede();
+        Long empresaId = TenantContext.getCurrentTenant();
+        
         List<VwDashboardVentas> ventas;
-
         if (sedeId != null) {
             ventas = dashboardRepository.findBySedeIdAndFechaBetweenOrderByFechaAsc(sedeId, inicio, fin);
         } else {
-            ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
+            ventas = dashboardRepository.findByEmpresaIdAndFechaBetweenOrderByFechaAsc(empresaId, inicio, fin);
         }
 
         DashboardVentasDTO dto = new DashboardVentasDTO();
-
         BigDecimal totalIngresos = ventas.stream()
-                .map(VwDashboardVentas::getTotalIngresos)
+                .map(v -> v.getTotalIngresos() != null ? v.getTotalIngresos() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
+        
         Long totalPedidos = ventas.stream()
-                .mapToLong(VwDashboardVentas::getCantidadPedidos)
+                .mapToLong(v -> v.getCantidadPedidos() != null ? v.getCantidadPedidos() : 0L)
                 .sum();
 
-        List<DashboardVentasDTO.DetalleDiaDTO> detalle = ventas.stream().map(v -> {
-            DashboardVentasDTO.DetalleDiaDTO d = new DashboardVentasDTO.DetalleDiaDTO();
-            d.setFecha(v.getFecha().toString());
-            d.setIngresos(v.getTotalIngresos());
-            d.setPedidos(v.getCantidadPedidos());
-            return d;
-        }).toList();
+        List<DashboardVentasDTO.DetalleDiaDTO> detalle;
+        if (sedeId != null) {
+            detalle = ventas.stream().map(v -> {
+                DashboardVentasDTO.DetalleDiaDTO d = new DashboardVentasDTO.DetalleDiaDTO();
+                d.setFecha(v.getFecha().toString());
+                d.setIngresos(v.getTotalIngresos() != null ? v.getTotalIngresos() : BigDecimal.ZERO);
+                d.setPedidos(v.getCantidadPedidos() != null ? v.getCantidadPedidos() : 0L);
+                return d;
+            }).toList();
+        } else {
+            Map<LocalDate, DashboardVentasDTO.DetalleDiaDTO> agrupado = new LinkedHashMap<>();
+            for (VwDashboardVentas v : ventas) {
+                agrupado.computeIfAbsent(v.getFecha(), k -> {
+                    DashboardVentasDTO.DetalleDiaDTO d = new DashboardVentasDTO.DetalleDiaDTO();
+                    d.setFecha(k.toString());
+                    d.setIngresos(BigDecimal.ZERO);
+                    d.setPedidos(0L);
+                    return d;
+                });
+                DashboardVentasDTO.DetalleDiaDTO dia = agrupado.get(v.getFecha());
+                dia.setIngresos(dia.getIngresos().add(v.getTotalIngresos() != null ? v.getTotalIngresos() : BigDecimal.ZERO));
+                dia.setPedidos(dia.getPedidos() + (v.getCantidadPedidos() != null ? v.getCantidadPedidos() : 0L));
+            }
+            detalle = new ArrayList<>(agrupado.values());
+        }
 
         dto.setIngresosTotalesMensuales(totalIngresos);
         dto.setPedidosTotalesMensuales(totalPedidos);
         dto.setDetalleDiario(detalle);
-
         return dto;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin) {
+    public byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin, Long paramSedeId) {
         validarRangoFechas(inicio, fin);
         
-        Long sedeId = TenantContext.getCurrentSede();
-        List<VwDashboardVentas> ventas;
+        Long sedeId = paramSedeId != null ? paramSedeId : TenantContext.getCurrentSede();
+        Long empresaId = TenantContext.getCurrentTenant();
 
+        List<VwDashboardVentas> ventas;
         if (sedeId != null) {
             ventas = dashboardRepository.findBySedeIdAndFechaBetweenOrderByFechaAsc(sedeId, inicio, fin);
         } else {
-            ventas = dashboardRepository.findByFechaBetweenOrderByFechaAsc(inicio, fin);
+            ventas = dashboardRepository.findByEmpresaIdAndFechaBetweenOrderByFechaAsc(empresaId, inicio, fin);
         }
         
         return excelManager.generarReporteVentas(ventas);
@@ -99,17 +116,15 @@ public class ReporteServiceImpl implements IReporteService {
 
     @Override
     @Transactional(readOnly = true)
-    public MargenVentasDTO obtenerMargenVentas(LocalDate inicio, LocalDate fin) {
+    public MargenVentasDTO obtenerMargenVentas(LocalDate inicio, LocalDate fin, Long paramSedeId) {
         validarRangoFechas(inicio, fin);
-
         LocalDateTime inicioTs = inicio.atStartOfDay();
         LocalDateTime finTs = fin.atTime(23, 59, 59);
-        Long sedeId = TenantContext.getCurrentSede(); 
+        Long sedeId = paramSedeId != null ? paramSedeId : TenantContext.getCurrentSede();
 
         List<PedidoDetalle> vendidos;
         List<PedidoDetalle> merma;
 
-        // BIFURCACIÓN PARA EL CÁLCULO DE MÁRGENES
         if (sedeId != null) {
             vendidos = detalleRepository.findDetallesConCostoPorPeriodoYSede(sedeId, EstadoPedido.PAGADO, inicioTs, finTs, EstadoItem.CANCELADO);
             merma = detalleRepository.findDetallesMermaConCostoPorPeriodoYSede(sedeId, inicioTs, finTs, EstadoItem.CANCELADO);
@@ -120,22 +135,28 @@ public class ReporteServiceImpl implements IReporteService {
 
         Map<Long, MargenVentasDTO.MargenProductoDTO> porProducto = new LinkedHashMap<>();
         Map<Long, MargenVentasDTO.MargenCategoriaDTO> porCategoria = new LinkedHashMap<>();
+
         BigDecimal ingresosTotales = BigDecimal.ZERO;
         BigDecimal costoTotalVentas = BigDecimal.ZERO;
 
         for (PedidoDetalle pd : vendidos) {
             Producto producto = pd.getProducto();
             Categoria cat = producto.getCategoria();
-
+            
             BigDecimal subtotalItem = pd.getSubtotal();
             BigDecimal pedidoSubtotal = pd.getPedido().getSubtotal();
             BigDecimal pedidoTotal = pd.getPedido().getTotal();
+            
             BigDecimal factorDescuento = pedidoSubtotal.compareTo(BigDecimal.ZERO) != 0
                     ? pedidoTotal.divide(pedidoSubtotal, 10, RoundingMode.HALF_UP)
                     : BigDecimal.ONE;
+                    
             BigDecimal ingresoEfectivo = subtotalItem.multiply(factorDescuento).setScale(2, RoundingMode.HALF_UP);
-
-            BigDecimal costoItem = pd.getCostoUnitarioConsumido()
+            
+            // 🚨 SOLUCIÓN NULL POINTER: Si el costo consumido es nulo (pedidos antiguos), lo tratamos como 0
+            BigDecimal costoConsumido = pd.getCostoUnitarioConsumido() != null ? pd.getCostoUnitarioConsumido() : BigDecimal.ZERO;
+            
+            BigDecimal costoItem = costoConsumido
                     .multiply(new BigDecimal(pd.getCantidad()))
                     .setScale(4, RoundingMode.HALF_UP);
 
@@ -154,6 +175,7 @@ public class ReporteServiceImpl implements IReporteService {
                 p.setCostoVentas(BigDecimal.ZERO);
                 return p;
             });
+
             MargenVentasDTO.MargenProductoDTO mp = porProducto.get(producto.getId());
             mp.setIngresos(mp.getIngresos().add(ingresoEfectivo));
             mp.setCostoVentas(mp.getCostoVentas().add(costoItem));
@@ -166,6 +188,7 @@ public class ReporteServiceImpl implements IReporteService {
                 c.setCostoVentas(BigDecimal.ZERO);
                 return c;
             });
+
             MargenVentasDTO.MargenCategoriaDTO mc = porCategoria.get(cat.getId());
             mc.setIngresos(mc.getIngresos().add(ingresoEfectivo));
             mc.setCostoVentas(mc.getCostoVentas().add(costoItem));
@@ -173,7 +196,10 @@ public class ReporteServiceImpl implements IReporteService {
 
         BigDecimal costoMerma = BigDecimal.ZERO;
         for (PedidoDetalle pd : merma) {
-            costoMerma = costoMerma.add(pd.getCostoUnitarioConsumido()
+            // 🚨 SOLUCIÓN NULL POINTER EN MERMAS
+            BigDecimal costoConsumido = pd.getCostoUnitarioConsumido() != null ? pd.getCostoUnitarioConsumido() : BigDecimal.ZERO;
+            
+            costoMerma = costoMerma.add(costoConsumido
                     .multiply(new BigDecimal(pd.getCantidad()))
                     .setScale(4, RoundingMode.HALF_UP));
         }

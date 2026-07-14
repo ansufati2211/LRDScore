@@ -32,8 +32,9 @@ public class ReporteController {
     @RequiereModulo(Modulo.REPORTES_AVANZADOS)
     public ResponseEntity<DashboardVentasDTO> obtenerDashboardVentas(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
-        return ResponseEntity.ok(reporteService.obtenerResumenVentas(inicio, fin));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(reporteService.obtenerResumenVentas(inicio, fin, sedeId));
     }
 
     @GetMapping("/ventas/exportar-excel")
@@ -41,9 +42,10 @@ public class ReporteController {
     @RequiereModulo(Modulo.REPORTES_AVANZADOS)
     public ResponseEntity<byte[]> exportarVentasExcel(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) Long sedeId) {
         
-        byte[] excelBytes = reporteService.exportarVentasExcel(inicio, fin);
+        byte[] excelBytes = reporteService.exportarVentasExcel(inicio, fin, sedeId);
         
         HttpHeaders headers = new HttpHeaders();
         headers.add("Content-Disposition", "attachment; filename=reporte_ventas.xlsx");
@@ -57,7 +59,8 @@ public class ReporteController {
     @RequiereModulo(Modulo.REPORTES_AVANZADOS)
     public ResponseEntity<MargenVentasDTO> obtenerMargenVentas(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
-        return ResponseEntity.ok(reporteService.obtenerMargenVentas(inicio, fin));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(reporteService.obtenerMargenVentas(inicio, fin, sedeId));
     }
 }

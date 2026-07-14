@@ -91,12 +91,21 @@ public class KdsServiceImpl implements IKdsService {
             dto.setItems(entry.getValue().stream().map(v -> {
                 KdsCocinaDTO.KdsItemDTO item = new KdsCocinaDTO.KdsItemDTO();
                 item.setDetalleId(v.getDetalleId());
+                item.setProductoId(v.getProductoId()); // NUEVO: Extraemos el ID
                 item.setProducto(v.getProducto());
                 item.setCantidad(v.getCantidad());
                 item.setNotasPreparacion(v.getNotasPreparacion());
                 item.setTiempoPreparacionMinutos(v.getTiempoPreparacionMinutos());
                 item.setEstadoItem(v.getEstadoItem());
                 item.setNumeroComanda(v.getNumeroComanda());
+                
+                // 🔥 NUEVO: Extraemos la Categoría para el Filtro de Estaciones en React
+                productoRepository.findById(v.getProductoId()).ifPresent(p -> {
+                    if (p.getCategoria() != null) {
+                        item.setCategoriaNombre(p.getCategoria().getNombre());
+                    }
+                });
+                
                 return item;
             }).toList());
             return dto;
@@ -112,7 +121,6 @@ public class KdsServiceImpl implements IKdsService {
         pedidoRepository.iniciarPreparacionYDescontarStock(pedidoId, usuarioId);
         pedido.setEstadoActual(EstadoPedido.EN_PREPARACION);
         
-        // FASE 7: Emisión aislada a la sede
         sseEmitterManager.publicarTenantYSede(pedido.getEmpresaId(), pedido.getSedeId(), "PEDIDO_PREPARANDO", Map.of("pedidoId", pedidoId));
     }
 
@@ -128,11 +136,61 @@ public class KdsServiceImpl implements IKdsService {
         });
         pedidoRepository.save(pedido);
 
-        // FASE 7: Emisión aislada a la sede
         sseEmitterManager.publicarTenantYSede(pedido.getEmpresaId(), pedido.getSedeId(), "PEDIDO_LISTO", Map.of(
                 "pedidoId", pedido.getId(),
                 "mesa", pedido.getIdentificadorMesaReferencia() != null ? pedido.getIdentificadorMesaReferencia() : ""
         ));
+    }
+
+    // ==========================================
+    // 🔥 NUEVO: DESHACER PEDIDO (UNDO)
+    // ==========================================
+    @Override
+    @Transactional
+    public void deshacerPedido(Long pedidoId) {
+        Pedido pedido = pedidoRepository.findById(pedidoId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Pedido no encontrado con ID: " + pedidoId));
+        
+        if (pedido.getEstadoActual() != EstadoPedido.LISTO && pedido.getEstadoActual() != EstadoPedido.ENTREGADO) {
+            throw new ReglaNegocioException("Solo se pueden recuperar pedidos terminados (LISTO o ENTREGADO).");
+        }
+        
+        // Lo devolvemos a la pantalla de cocina
+        pedido.setEstadoActual(EstadoPedido.EN_PREPARACION);
+        
+        pedido.getDetalles().forEach(d -> {
+            if (d.getEstadoItem() == EstadoItem.LISTO || d.getEstadoItem() == EstadoItem.ENTREGADO) {
+                d.setEstadoItem(EstadoItem.EN_PREPARACION);
+            }
+        });
+        
+        pedidoRepository.save(pedido);
+        
+        // Avisamos a todos que hay un ticket de vuelta
+        sseEmitterManager.publicarTenantYSede(pedido.getEmpresaId(), pedido.getSedeId(), "NUEVO_PEDIDO", Map.of("pedidoId", pedidoId));
+    }
+
+    // ==========================================
+    // 🔥 NUEVO: VISOR DE RECETAS
+    // ==========================================
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> obtenerRecetaKds(Long productoId) {
+        Producto p = productoRepository.findById(productoId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado con ID: " + productoId));
+        
+        List<Map<String, Object>> ingredientes = recetaDetalleRepository.findByProductoId(productoId).stream()
+                .map(rd -> Map.<String, Object>of(
+                        "insumo", rd.getInsumo().getNombre(),
+                        "cantidad", rd.getCantidadRequerida(),
+                        "unidad", rd.getUnidadMedida()
+                )).toList();
+        
+        return Map.of(
+                "producto", p.getNombre(),
+                "instrucciones", p.getDescripcion() != null && !p.getDescripcion().isBlank() ? p.getDescripcion() : "No hay instrucciones de preparación registradas. Guíese por la receta estándar.",
+                "ingredientes", ingredientes
+        );
     }
 
     // --- MÉTODOS DE DISPONIBILIDAD (Agotados) ---
@@ -155,7 +213,7 @@ public class KdsServiceImpl implements IKdsService {
         productoRepository.save(p);
     }
 
-    @Override
+   @Override
     @Transactional(readOnly = true)
     public List<PorcionDisponibleDTO> calcularPorcionesDisponibles(Long sedeIdFiltro) {
         Long sedeId = TenantContext.getCurrentSede();
@@ -175,6 +233,10 @@ public class KdsServiceImpl implements IKdsService {
                     dto.setNombreProducto(p.getNombre());
                     dto.setPorcionesDisponibles(minPorciones.intValue());
                     dto.setNivelAdvertencia(minPorciones.intValue() <= 5 ? "ALTO" : "NORMAL");
+                    
+                    // 🔥 NUEVO: Enviamos el estado a React
+                    dto.setEstadoDisponibilidad(p.getEstadoDisponibilidad().name());
+                    
                     return dto;
                 })
                 .filter(java.util.Objects::nonNull)

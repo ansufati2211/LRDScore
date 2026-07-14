@@ -14,5 +14,5 @@ public interface IUsuarioService {
     void resetPassword(Long id, String nuevaPassword); // FIX Error 2
     void desactivarUsuario(Long id);
     void activarUsuario(Long id); // FIX Error 4
-    List<Usuario> listarUsuarios();
+List<Usuario> listarUsuarios(Long sedeId);
 }

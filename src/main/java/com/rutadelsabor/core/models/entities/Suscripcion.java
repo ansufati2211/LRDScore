@@ -47,15 +47,15 @@ public class Suscripcion {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @PrePersist
+@PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
+        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now(ZoneId.of("UTC"));
+        this.updatedAt = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

@@ -11,5 +11,8 @@ public interface VwDashboardVentasRepository extends JpaRepository<VwDashboardVe
     List<VwDashboardVentas> findBySedeIdAndFechaBetweenOrderByFechaAsc(Long sedeId, LocalDate inicio, LocalDate fin);
     
     // Para ver el consolidado de toda la cadena (Uso exclusivo del ROLE_ADMIN_EMPRESA):
+    List<VwDashboardVentas> findByEmpresaIdAndFechaBetweenOrderByFechaAsc(Long empresaId, LocalDate inicio, LocalDate fin);
+    
+    // Legacy (mantenido por precaución para no afectar otras dependencias si existen)
     List<VwDashboardVentas> findByFechaBetweenOrderByFechaAsc(LocalDate inicio, LocalDate fin);
 }

@@ -27,7 +27,9 @@ public class EscalacionScheduler {
     @Scheduled(fixedRate = 60000)
     @Transactional(readOnly = true)
     public void alertarPedidosDemorados() {
-        LocalDateTime limiteTolerancia = LocalDateTime.now(ZoneId.of("UTC")).minusMinutes(20);
+        // 🔥 CORRECCIÓN: Usamos la hora del sistema (America/Lima) en lugar de UTC
+        // para que coincida exactamente con el created_at de la base de datos.
+        LocalDateTime limiteTolerancia = LocalDateTime.now(ZoneId.systemDefault()).minusMinutes(20);
 
         List<Pedido> demorados = pedidoRepository.findByEstadoActualAndCreatedAtBefore(
                 EstadoPedido.EN_PREPARACION, limiteTolerancia);

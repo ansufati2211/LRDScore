@@ -38,8 +38,9 @@ public class UsuarioSede {
     @JoinColumn(name = "sede_id", insertable = false, updatable = false)
     private Sede sede;
 
-    @PrePersist
+@PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now(ZoneId.systemDefault());
+        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
+        this.createdAt = now;
     }
 }

@@ -6,7 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,15 +39,15 @@ public class Plan {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @PrePersist
+@PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now(ZoneOffset.UTC);
+        this.updatedAt = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

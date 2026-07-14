@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/usuarios")
@@ -23,22 +24,46 @@ public class UsuarioController {
         this.usuarioService = usuarioService;
     }
 
+    // 🚨 MODO DEBUG PARA CREAR USUARIO 🚨
     @PostMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
-    public ResponseEntity<Usuario> crearUsuario(@RequestBody UsuarioRequestDTO dto) {
-        return new ResponseEntity<>(usuarioService.crearUsuario(dto), HttpStatus.CREATED);
+    public ResponseEntity<?> crearUsuario(@RequestBody UsuarioRequestDTO dto) {
+        try {
+            return new ResponseEntity<>(usuarioService.crearUsuario(dto), HttpStatus.CREATED);
+        } catch (Exception e) {
+            e.printStackTrace();
+            String causa = e.getCause() != null ? e.getCause().getMessage() : "";
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Fallo SQL: " + e.getMessage() + " | Detalles: " + causa));
+        }
     }
 
+    // 🚨 MODO DEBUG PARA ACTUALIZAR USUARIO 🚨
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
-    public ResponseEntity<Usuario> actualizarUsuario(@PathVariable Long id, @RequestBody UsuarioRequestDTO dto) {
-        return ResponseEntity.ok(usuarioService.actualizarUsuario(id, dto));
+    public ResponseEntity<?> actualizarUsuario(@PathVariable Long id, @RequestBody UsuarioRequestDTO dto) {
+        try {
+            return ResponseEntity.ok(usuarioService.actualizarUsuario(id, dto));
+        } catch (Exception e) {
+            e.printStackTrace();
+            String causa = e.getCause() != null ? e.getCause().getMessage() : "";
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Fallo SQL: " + e.getMessage() + " | Detalles: " + causa));
+        }
     }
 
     @PutMapping("/{id}/password")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA') or #id == authentication.principal.usuarioId")
     public ResponseEntity<Void> cambiarPassword(@PathVariable Long id, @RequestBody CambiarPasswordDTO dto) {
         usuarioService.cambiarPassword(id, dto);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{id}/reset-password")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
+    public ResponseEntity<Void> resetearPasswordAdmin(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        String nuevaPassword = payload.get("nuevaPassword");
+        usuarioService.resetPassword(id, nuevaPassword);
         return ResponseEntity.ok().build();
     }
 
@@ -49,15 +74,21 @@ public class UsuarioController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping
+    @PutMapping("/{id}/activar")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
-    public ResponseEntity<List<Usuario>> listarUsuarios() {
-        return ResponseEntity.ok(usuarioService.listarUsuarios());
+    public ResponseEntity<Void> activarUsuario(@PathVariable Long id) {
+        usuarioService.activarUsuario(id);
+        return ResponseEntity.ok().build();
     }
 
- @GetMapping("/me")
+@GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
+    public ResponseEntity<List<Usuario>> listarUsuarios(@RequestParam(required = false) Long sedeId) {
+        return ResponseEntity.ok(usuarioService.listarUsuarios(sedeId));
+    }
+
+    @GetMapping("/me")
     public ResponseEntity<Usuario> obtenerPerfil(Authentication authentication) {
-        // FIX SonarLint: Verificación segura del principal para evitar NullPointerException
         if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl userDetails)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }

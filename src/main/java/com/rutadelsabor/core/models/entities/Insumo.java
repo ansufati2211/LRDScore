@@ -6,21 +6,18 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-@Getter
-@Setter
 @Entity
 @Table(name = "insumos")
+@Getter
+@Setter
 public class Insumo extends BaseTenantEntity {
 
     @Column(nullable = false, length = 100)
     private String nombre;
 
-    @Column(name = "unidad_medida", nullable = false, length = 20)
+    @Column(name = "unidad_medida", length = 20)
     private String unidadMedida;
 
-    @Column(name = "estado_registro", nullable = false)
+    @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
-
-    // ELIMINADOS: stockActual, stockMinimo, stockReservado, costoUnitario.
-    // Ahora viven en InsumoSede.java
 }

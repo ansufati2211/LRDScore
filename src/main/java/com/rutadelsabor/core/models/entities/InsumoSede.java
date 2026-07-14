@@ -4,8 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Getter
 @Setter
@@ -14,7 +14,6 @@ import java.time.LocalDateTime;
 @IdClass(InsumoSedeId.class)
 public class InsumoSede {
 
-    private static final Clock UTC_CLOCK = Clock.systemUTC();
 
     @Id
     @Column(name = "insumo_id")
@@ -54,15 +53,15 @@ public class InsumoSede {
     @JoinColumn(name = "sede_id", insertable = false, updatable = false)
     private Sede sede;
 
-    @PrePersist
+@PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now(UTC_CLOCK);
+        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now(UTC_CLOCK);
+        this.updatedAt = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

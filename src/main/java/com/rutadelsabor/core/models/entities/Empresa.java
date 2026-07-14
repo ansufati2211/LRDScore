@@ -42,7 +42,7 @@ public class Empresa {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @PrePersist
+@PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;

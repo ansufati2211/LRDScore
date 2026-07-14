@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -59,7 +60,7 @@ public class CajaServiceImpl implements ICajaService {
         sesion.setSedeId(sedeEfectiva); // SE ASIGNA LA SEDE RESUELTA
         sesion.setMontoInicial(montoInicial);
         sesion.setEstado(EstadoCaja.ABIERTA);
-        sesion.setFechaApertura(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
+        sesion.setFechaApertura(LocalDateTime.now(ZoneId.systemDefault()));
 
         return cajaRepository.save(sesion);
     }
@@ -77,7 +78,7 @@ public class CajaServiceImpl implements ICajaService {
         BigDecimal totalEfectivo = transaccionPagoRepository.sumarPorSesionYMetodo(sesionCajaId, MetodoPago.EFECTIVO);
         sesion.setMontoFinalCalculado(sesion.getMontoInicial().add(totalEfectivo));
         sesion.setEstado(EstadoCaja.CERRADA);
-        sesion.setFechaCierre(LocalDateTime.now(java.time.Clock.systemDefaultZone()));
+        sesion.setFechaCierre(LocalDateTime.now(ZoneId.systemDefault()));
         sesion.setMontoFinalDeclarado(montoFinalDeclarado);
 
         SesionCaja sesionCerrada = cajaRepository.save(sesion);

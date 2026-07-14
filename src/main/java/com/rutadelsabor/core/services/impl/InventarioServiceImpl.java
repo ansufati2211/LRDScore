@@ -19,12 +19,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class InventarioServiceImpl implements IInventarioService {
 
     private static final String TIPO_MOVIMIENTO_RESERVA = "RESERVA";
-
     private final CategoriaRepository categoriaRepository;
     private final InsumoRepository insumoRepository;
     private final InsumoSedeRepository insumoSedeRepository;
@@ -101,7 +101,76 @@ public class InventarioServiceImpl implements IInventarioService {
         RecetaDetalle r = new RecetaDetalle(); r.setProducto(p); r.setInsumo(i); r.setCantidadRequerida(cantidad); r.setUnidadMedida(unidadMedida);
         return recetaDetalleRepository.save(r);
     }
+
     @Override @Transactional(readOnly = true) public List<RecetaDetalle> obtenerRecetaPorProducto(Long pId) { return recetaDetalleRepository.findByProductoId(pId); }
+
+    @Override
+    @Transactional
+    public void actualizarRecetaCompleta(Long productoId, Map<Long, BigDecimal> insumosYCantidades) {
+        Producto p = productoRepository.findById(productoId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado"));
+        List<RecetaDetalle> actuales = recetaDetalleRepository.findByProductoId(productoId);
+        if (!actuales.isEmpty()) {
+            recetaDetalleRepository.deleteAllInBatch(actuales);
+        }
+        List<RecetaDetalle> nuevos = new ArrayList<>();
+        for (Map.Entry<Long, BigDecimal> entry : insumosYCantidades.entrySet()) {
+            Insumo i = insumoRepository.findById(entry.getKey())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + entry.getKey()));
+            RecetaDetalle r = new RecetaDetalle();
+            r.setProducto(p);
+            r.setInsumo(i);
+            r.setCantidadRequerida(entry.getValue());
+            r.setUnidadMedida(i.getUnidadMedida());
+            r.setEmpresaId(TenantContext.getCurrentTenant());
+            nuevos.add(r);
+        }
+        recetaDetalleRepository.saveAll(nuevos);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> obtenerRecetaFormateada(Long productoId) {
+        return recetaDetalleRepository.findByProductoId(productoId).stream()
+            .filter(r -> r.getInsumo() != null)
+            .map(r -> {
+                Map<String, Object> map = new java.util.HashMap<>();
+                map.put("insumoId", r.getInsumo().getId());
+                map.put("cantidadUsada", r.getCantidadRequerida());
+                return map;
+            }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listarInsumosConCosto(Long sedeId) {
+        return insumoRepository.findAll().stream().map(i -> {
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", i.getId());
+            map.put("nombre", i.getNombre());
+            map.put("unidadMedida", i.getUnidadMedida());
+            map.put("estadoRegistro", i.getEstadoRegistro() != null ? i.getEstadoRegistro() : true);
+            
+            BigDecimal costo = BigDecimal.ZERO;
+            BigDecimal stockActual = BigDecimal.ZERO;
+            BigDecimal stockMinimo = BigDecimal.ZERO;
+            BigDecimal stockReservado = BigDecimal.ZERO;
+            if (sedeId != null) {
+                insumoSedeRepository.findBySedeIdAndInsumoId(sedeId, i.getId())
+                    .ifPresent(is -> {
+                        map.put("costoUnitario", is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO);
+                        map.put("stockActual", is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO);
+                        map.put("stockMinimo", is.getStockMinimo() != null ? is.getStockMinimo() : BigDecimal.ZERO);
+                        map.put("stockReservado", is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO);
+                    });
+            }
+            map.putIfAbsent("costoUnitario", costo);
+            map.putIfAbsent("stockActual", stockActual);
+            map.putIfAbsent("stockMinimo", stockMinimo);
+            map.putIfAbsent("stockReservado", stockReservado);
+            return map;
+        }).collect(Collectors.toList());
+    }
 
     @Override @Transactional public Insumo crearInsumo(Insumo i) { return insumoRepository.save(i); }
     @Override @Transactional public Insumo actualizarInsumo(Long id, InsumoRequestDTO dto) {
@@ -112,13 +181,17 @@ public class InventarioServiceImpl implements IInventarioService {
     }
     @Override @Transactional public void desactivarInsumo(Long id) { Insumo i = insumoRepository.findById(id).orElseThrow(); i.setEstadoRegistro(false); insumoRepository.save(i); }
     @Override @Transactional(readOnly = true) public List<Insumo> listarInsumos() { return insumoRepository.findAll(); }
+    @Override @Transactional public void activarInsumo(Long id) {
+        Insumo i = insumoRepository.findById(id).orElseThrow();
+        i.setEstadoRegistro(true);
+        insumoRepository.save(i);
+    }
 
-    @Override 
-    @Transactional(readOnly = true) 
+    @Override
+    @Transactional(readOnly = true)
     public List<InsumoBajoStockDTO> listarInsumosConStockBajo(Long sedeIdFiltro) {
         Long sedeId = TenantContext.getCurrentSede();
         List<InsumoSede> insumosSede;
-
         if (sedeId != null) {
             insumosSede = insumoSedeRepository.findInsumosConStockBajoPorSede(sedeId);
         } else {
@@ -129,7 +202,6 @@ public class InventarioServiceImpl implements IInventarioService {
                 insumosSede = insumoSedeRepository.findInsumosConStockBajo();
             }
         }
-        
         return insumosSede.stream().map(is -> {
             InsumoBajoStockDTO dto = new InsumoBajoStockDTO();
             dto.setInsumoId(is.getInsumo().getId());
@@ -139,10 +211,10 @@ public class InventarioServiceImpl implements IInventarioService {
             dto.setStockActual(is.getStockActual());
             dto.setStockMinimo(is.getStockMinimo());
             return dto;
-        }).toList();
+        }).collect(Collectors.toList());
     }
 
-    @Override 
+    @Override
     @Transactional(readOnly = true)
     public List<KardexMovimiento> listarKardexPorInsumo(Long insumoId, Long sedeIdFiltro) {
         Long sedeId = TenantContext.getCurrentSede();
@@ -157,27 +229,37 @@ public class InventarioServiceImpl implements IInventarioService {
             }
         }
     }
-    
+
     private InsumoSede obtenerInventarioFisico(Long sedeEfectiva, Long insumoId) {
         return insumoSedeRepository.findBySedeIdAndInsumoId(sedeEfectiva, insumoId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("El insumo no tiene inventario inicializado en esta sede."));
+                .orElseGet(() -> {
+                    Insumo insumoMaestro = insumoRepository.findById(insumoId)
+                            .orElseThrow(() -> new RecursoNoEncontradoException("El insumo maestro no existe."));
+                    InsumoSede nuevoIs = new InsumoSede();
+                    nuevoIs.setInsumoId(insumoId);
+                    nuevoIs.setSedeId(sedeEfectiva);
+                    nuevoIs.setEmpresaId(TenantContext.getCurrentTenant());
+                    nuevoIs.setStockActual(BigDecimal.ZERO);
+                    nuevoIs.setStockMinimo(BigDecimal.ZERO);
+                    nuevoIs.setStockReservado(BigDecimal.ZERO);
+                    nuevoIs.setCostoUnitario(BigDecimal.ZERO);
+                    nuevoIs.setInsumo(insumoMaestro);
+                    return insumoSedeRepository.save(nuevoIs);
+                });
     }
 
     @Override @Transactional
     public void registrarEntrada(EntradaAlmacenRequestDTO dto, Usuario usr) {
         Long sedeEfectiva = TenantContext.resolverSedeEfectiva(dto.getSedeId());
         InsumoSede is = obtenerInventarioFisico(sedeEfectiva, dto.getInsumoId());
-        BigDecimal ant = is.getStockActual();
+        BigDecimal ant = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
         BigDecimal post = ant.add(dto.getCantidad());
-
         BigDecimal valAnt = ant.multiply(is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO);
         BigDecimal valNuevo = dto.getCantidad().multiply(dto.getCostoUnitario());
-        BigDecimal nuevoCosto = valAnt.add(valNuevo).divide(post, 2, RoundingMode.HALF_UP);
-
+        BigDecimal nuevoCosto = post.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : valAnt.add(valNuevo).divide(post, 2, RoundingMode.HALF_UP);
         is.setStockActual(post);
         is.setCostoUnitario(nuevoCosto);
         insumoSedeRepository.save(is);
-
         registrarMovimientoKardex(new DatosKardex(sedeEfectiva, is.getInsumo(), "ENTRADA_COMPRA", dto.getCantidad(), ant, post, nuevoCosto, usr, dto.getObservacion(), null));
     }
 
@@ -185,13 +267,11 @@ public class InventarioServiceImpl implements IInventarioService {
     public void registrarMerma(MermaRequestDTO dto, Usuario usr) {
         Long sedeEfectiva = TenantContext.resolverSedeEfectiva(dto.getSedeId());
         InsumoSede is = obtenerInventarioFisico(sedeEfectiva, dto.getInsumoId());
-        if (is.getStockActual().compareTo(dto.getCantidad()) < 0) throw new ReglaNegocioException("Stock físico insuficiente.");
-
-        BigDecimal ant = is.getStockActual();
+        BigDecimal ant = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+        if (ant.compareTo(dto.getCantidad()) < 0) throw new ReglaNegocioException("Stock físico insuficiente.");
         BigDecimal post = ant.subtract(dto.getCantidad());
         is.setStockActual(post);
         insumoSedeRepository.save(is);
-
         registrarMovimientoKardex(new DatosKardex(sedeEfectiva, is.getInsumo(), "SALIDA_MERMA", dto.getCantidad(), ant, post, is.getCostoUnitario(), usr, dto.getMotivo(), null));
     }
 
@@ -199,47 +279,57 @@ public class InventarioServiceImpl implements IInventarioService {
     public void registrarAjuste(AjusteInventarioRequestDTO dto, Usuario usr) {
         Long sedeEfectiva = TenantContext.resolverSedeEfectiva(dto.getSedeId());
         InsumoSede is = obtenerInventarioFisico(sedeEfectiva, dto.getInsumoId());
-        BigDecimal ant = is.getStockActual();
+        BigDecimal ant = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
         BigDecimal post = Boolean.TRUE.equals(dto.getEsPositivo()) ? ant.add(dto.getCantidad()) : ant.subtract(dto.getCantidad());
-
         if (post.compareTo(BigDecimal.ZERO) < 0) throw new ReglaNegocioException("Stock negativo.");
         is.setStockActual(post);
         insumoSedeRepository.save(is);
         String tipo = Boolean.TRUE.equals(dto.getEsPositivo()) ? "ENTRADA_AJUSTE" : "SALIDA_AJUSTE";
-        
         registrarMovimientoKardex(new DatosKardex(sedeEfectiva, is.getInsumo(), tipo, dto.getCantidad(), ant, post, is.getCostoUnitario(), usr, dto.getMotivo(), null));
     }
 
     private void registrarMovimientoKardex(DatosKardex req) {
         KardexMovimiento k = new KardexMovimiento();
+        k.setEmpresaId(TenantContext.getCurrentTenant());
         k.setSedeId(req.sedeId());
         k.setInsumo(req.insumo()); 
         k.setTipoMovimiento(req.tipoMovimiento()); 
         k.setCantidad(req.cantidad());
-        k.setStockAnterior(req.stockAnterior()); 
-        k.setStockPosterior(req.stockPosterior()); 
-        k.setCostoUnitario(req.costoUnitario());
+        k.setStockAnterior(req.stockAnterior() != null ? req.stockAnterior() : BigDecimal.ZERO); 
+        k.setStockPosterior(req.stockPosterior() != null ? req.stockPosterior() : BigDecimal.ZERO); 
+        k.setCostoUnitario(req.costoUnitario() != null ? req.costoUnitario() : BigDecimal.ZERO);
         k.setUsuario(req.usuario()); 
         k.setObservacion(req.observacion()); 
         k.setPedidoId(req.pedidoId());
         kardexRepository.save(k);
     }
 
+    // 🔥 FIX 500: PASAMOS SEDE_ID DIRECTAMENTE DESDE EL PEDIDO
     @Override @Transactional
     public void reservarInsumosParaPedido(Long pedidoId, List<PedidoDetalle> detalles) {
+        if (detalles.isEmpty()) return;
+        Long sedeIdDelPedido = detalles.get(0).getPedido().getSedeId();
+
         Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
-        Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo);
+        Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo, sedeIdDelPedido);
         List<InsumoFaltanteDTO> faltantes = validarDisponibilidadReserva(totalPorInsumo, insumosPorId);
-        if (!faltantes.isEmpty()) throw new StockInsuficienteException(faltantes);
         
+        if (!faltantes.isEmpty()) throw new StockInsuficienteException(faltantes);
+                 
+        Usuario operador = detalles.get(0).getPedido().getMozo();
+
         for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
             InsumoSede is = insumosPorId.get(entry.getKey());
             BigDecimal cant = entry.getValue();
-            BigDecimal ant = is.getStockActual();
-            is.setStockReservado(is.getStockReservado().add(cant));
+            
+            BigDecimal ant = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+            BigDecimal stockRes = is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO;
+            
+            is.setStockReservado(stockRes.add(cant));
             insumoSedeRepository.save(is);
             
-            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), TIPO_MOVIMIENTO_RESERVA, cant, ant, ant, is.getCostoUnitario(), null, "Reserva pedido #" + pedidoId, pedidoId));
+            BigDecimal costoUnitario = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
+            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), TIPO_MOVIMIENTO_RESERVA, cant, ant, ant, costoUnitario, operador, "Reserva pedido #" + pedidoId, pedidoId));
         }
     }
 
@@ -247,13 +337,16 @@ public class InventarioServiceImpl implements IInventarioService {
     public void liberarReservaDePedido(Long pedidoId) {
         List<KardexMovimiento> reservas = kardexRepository.findByPedidoIdAndTipoMovimiento(pedidoId, TIPO_MOVIMIENTO_RESERVA);
         for (KardexMovimiento r : reservas) {
-            // Obtenemos la sede desde la reserva
             InsumoSede is = obtenerInventarioFisico(r.getSedeId(), r.getInsumo().getId());
             BigDecimal cant = r.getCantidad();
-            is.setStockReservado(is.getStockReservado().subtract(cant).max(BigDecimal.ZERO));
+            
+            BigDecimal stockRes = is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO;
+            is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
             insumoSedeRepository.save(is);
             
-            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "LIBERACION_RESERVA", cant, is.getStockActual(), is.getStockActual(), is.getCostoUnitario(), null, "Liberación total pedido #" + pedidoId, pedidoId));
+            BigDecimal actual = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+            BigDecimal costoUnitario = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
+            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "LIBERACION_RESERVA", cant, actual, actual, costoUnitario, r.getUsuario(), "Liberación total pedido #" + pedidoId, pedidoId));
         }
     }
 
@@ -264,47 +357,64 @@ public class InventarioServiceImpl implements IInventarioService {
         for (KardexMovimiento r : reservas) {
             InsumoSede is = obtenerInventarioFisico(r.getSedeId(), r.getInsumo().getId());
             BigDecimal cant = r.getCantidad();
+            
+            BigDecimal ant = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+            BigDecimal stockRes = is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO;
 
-            if (is.getStockActual().compareTo(cant) < 0) {
+            if (ant.compareTo(cant) < 0) {
                 requiereRevision = true;
-                is.setStockReservado(is.getStockReservado().subtract(cant).max(BigDecimal.ZERO));
+                is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
                 insumoSedeRepository.save(is);
                 continue;
             }
-
-            BigDecimal ant = is.getStockActual();
             BigDecimal post = ant.subtract(cant);
             is.setStockActual(post);
-            is.setStockReservado(is.getStockReservado().subtract(cant).max(BigDecimal.ZERO));
+            is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
             insumoSedeRepository.save(is);
             
-            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "CONSUMO_PRODUCCION", cant, ant, post, is.getCostoUnitario(), null, "Consumo producción pedido #" + pedidoId, pedidoId));
+            BigDecimal costoUnitario = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
+            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "CONSUMO_PRODUCCION", cant, ant, post, costoUnitario, r.getUsuario(), "Consumo producción pedido #" + pedidoId, pedidoId));
         }
         return requiereRevision;
     }
 
+    // 🔥 FIX 500: PASAMOS SEDE_ID DIRECTAMENTE DESDE EL PEDIDO
     @Override @Transactional
     public boolean convertirItemsAConsumo(Long pedidoId, List<PedidoDetalle> detalles) {
+        if (detalles.isEmpty()) return false;
+        Long sedeIdDelPedido = detalles.get(0).getPedido().getSedeId();
+
         Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
-        Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo);
+        Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo, sedeIdDelPedido);
         Map<Long, BigDecimal> costoUnitarioPorDetalle = calcularCostoUnitarioPorDetalle(detalles, insumosPorId);
         
-        boolean reqRevision = consumirInsumos(pedidoId, totalPorInsumo, insumosPorId);
+        Usuario operador = detalles.get(0).getPedido().getMozo();
+        boolean reqRevision = consumirInsumos(pedidoId, totalPorInsumo, insumosPorId, operador);
         persistirCostoUnitarioConsumido(detalles, costoUnitarioPorDetalle);
         return reqRevision;
     }
 
+    // 🔥 FIX 500: PASAMOS SEDE_ID DIRECTAMENTE DESDE EL PEDIDO
     @Override @Transactional
     public void liberarReservaDeItems(Long pedidoId, List<PedidoDetalle> detalles) {
+        if (detalles.isEmpty()) return;
+        Long sedeIdDelPedido = detalles.get(0).getPedido().getSedeId();
+
         Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
-        Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo);
+        Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo, sedeIdDelPedido);
+        Usuario operador = detalles.get(0).getPedido().getMozo();
+
         for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
             InsumoSede is = insumosPorId.get(entry.getKey());
             BigDecimal cant = entry.getValue();
-            is.setStockReservado(is.getStockReservado().subtract(cant).max(BigDecimal.ZERO));
+            
+            BigDecimal stockRes = is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO;
+            is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
             insumoSedeRepository.save(is);
             
-            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "LIBERACION_RESERVA", cant, is.getStockActual(), is.getStockActual(), is.getCostoUnitario(), null, "Liberación parcial ítem en pedido #" + pedidoId, pedidoId));
+            BigDecimal actual = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+            BigDecimal costoUnitario = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
+            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "LIBERACION_RESERVA", cant, actual, actual, costoUnitario, operador, "Liberación parcial ítem en pedido #" + pedidoId, pedidoId));
         }
     }
 
@@ -318,11 +428,11 @@ public class InventarioServiceImpl implements IInventarioService {
         return total;
     }
 
-    private Map<Long, InsumoSede> cargarInventarioSede(Map<Long, BigDecimal> totalPorInsumo) {
+    // 🔥 FIX 500: SE RECIBE EL SEDE_ID COMO PARÁMETRO SEGURO, YA NO DEPENDE DEL HILO
+    private Map<Long, InsumoSede> cargarInventarioSede(Map<Long, BigDecimal> totalPorInsumo, Long sedeIdDelPedido) {
         Map<Long, InsumoSede> map = new LinkedHashMap<>();
-        Long sedeId = TenantContext.getCurrentSede();
         for (Long insumoId : totalPorInsumo.keySet()) {
-            insumoSedeRepository.findBySedeIdAndInsumoId(sedeId, insumoId).ifPresent(is -> map.put(insumoId, is));
+            map.put(insumoId, obtenerInventarioFisico(sedeIdDelPedido, insumoId));
         }
         return map;
     }
@@ -333,7 +443,11 @@ public class InventarioServiceImpl implements IInventarioService {
             InsumoSede is = inv.get(entry.getKey());
             if (is == null) continue;
             BigDecimal necesario = entry.getValue();
-            BigDecimal disp = is.getStockActual().subtract(is.getStockReservado());
+            
+            BigDecimal stockActual = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+            BigDecimal stockRes = is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO;
+            
+            BigDecimal disp = stockActual.subtract(stockRes);
             if (disp.compareTo(necesario) < 0) faltantes.add(new InsumoFaltanteDTO(is.getInsumo().getNombre(), disp.max(BigDecimal.ZERO), necesario));
         }
         return faltantes;
@@ -358,22 +472,25 @@ public class InventarioServiceImpl implements IInventarioService {
         return costoDetalle;
     }
 
-    private boolean consumirInsumos(Long pedidoId, Map<Long, BigDecimal> req, Map<Long, InsumoSede> inv) {
+    private boolean consumirInsumos(Long pedidoId, Map<Long, BigDecimal> req, Map<Long, InsumoSede> inv, Usuario operador) {
         boolean reqRev = false;
         for (Map.Entry<Long, BigDecimal> entry : req.entrySet()) {
             InsumoSede is = inv.get(entry.getKey());
             if (is == null) continue;
             BigDecimal cant = entry.getValue();
-            if (is.getStockActual().compareTo(cant) < 0) {
+            
+            BigDecimal ant = is.getStockActual() != null ? is.getStockActual() : BigDecimal.ZERO;
+            BigDecimal stockRes = is.getStockReservado() != null ? is.getStockReservado() : BigDecimal.ZERO;
+            
+            if (ant.compareTo(cant) < 0) {
                 reqRev = true;
-                is.setStockReservado(is.getStockReservado().subtract(cant).max(BigDecimal.ZERO));
+                is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
             } else {
-                BigDecimal ant = is.getStockActual();
                 BigDecimal post = ant.subtract(cant);
                 is.setStockActual(post);
-                is.setStockReservado(is.getStockReservado().subtract(cant).max(BigDecimal.ZERO));
-                
-                registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "CONSUMO_PRODUCCION", cant, ant, post, is.getCostoUnitario(), null, "Consumo pedido #" + pedidoId, pedidoId));
+                is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
+                BigDecimal costoUnit = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
+                registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "CONSUMO_PRODUCCION", cant, ant, post, costoUnit, operador, "Consumo pedido #" + pedidoId, pedidoId));
             }
             insumoSedeRepository.save(is);
         }

@@ -43,6 +43,7 @@ public class ModuloInterceptor implements HandlerInterceptor {
         if (annotation == null) {
             annotation = AnnotationUtils.findAnnotation(handlerMethod.getBeanType(), RequiereModulo.class);
         }
+
         if (annotation == null) {
             return true;
         }
@@ -80,6 +81,7 @@ public class ModuloInterceptor implements HandlerInterceptor {
     private void verificarModuloEnPlan(Suscripcion suscripcion, Modulo modulo) {
         boolean habilitado = suscripcion.getPlan().getModulos().stream()
                 .anyMatch(pm -> pm.getCodigoModulo() == modulo);
+
         if (!habilitado) {
             throw new ModuloNoHabilitadoException(modulo);
         }
@@ -92,6 +94,7 @@ public class ModuloInterceptor implements HandlerInterceptor {
         }
         String method = request.getMethod();
         boolean esLectura = "GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method);
+
         if (!esLectura) {
             throw new SuscripcionVencidaException(modulo);
         }

@@ -295,3 +295,9 @@ INSERT INTO clientes (id, empresa_id, nombre_razon_social, tipo_documento, numer
 ON CONFLICT DO NOTHING;
 
 DELETE FROM usuario_sedes WHERE usuario_id = 1;
+
+=========================================================
+? CONTRASE�A ORIGINAL : admin123
+?? HASH BCRYPT GENERADO: $2a$10$dI19A52n36xMgshgo0pWTOlBsXgPo7S3LFdRlM6NgK3Bo.qPrqim.
+=========================================================
+

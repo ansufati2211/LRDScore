@@ -19,7 +19,6 @@ import java.util.List;
 @Service
 public class UsuarioServiceImpl implements IUsuarioService {
 
-    // FIX SonarLint: Constante para evitar duplicación de texto
     private static final String USUARIO_NO_ENCONTRADO = "Usuario no encontrado";
 
     private final UsuarioRepository usuarioRepository;
@@ -70,12 +69,14 @@ public class UsuarioServiceImpl implements IUsuarioService {
     public Usuario actualizarUsuario(Long id, UsuarioRequestDTO dto) {
         Usuario u = usuarioRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException(USUARIO_NO_ENCONTRADO));
+        
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
+        if (dto.getCorreo() != null) u.setCorreo(dto.getCorreo()); // 🚨 ARREGLO: Ahora sí guardará el nuevo correo
         if (dto.getRol() != null) u.setRol(dto.getRol().toUpperCase());
+        
         return usuarioRepository.save(u);
     }
 
-    // FIX Error 1: Implementación del método faltante
     @Override
     @Transactional(readOnly = true)
     public Usuario obtenerUsuario(Long id) {
@@ -95,7 +96,6 @@ public class UsuarioServiceImpl implements IUsuarioService {
         usuarioRepository.save(u);
     }
 
-    // FIX Error 2: Implementación del método faltante
     @Override
     @Transactional
     public void resetPassword(Long id, String nuevaPassword) {
@@ -123,9 +123,27 @@ public class UsuarioServiceImpl implements IUsuarioService {
         usuarioRepository.save(u);
     }
 
-    @Override
+@Override
     @Transactional(readOnly = true)
-    public List<Usuario> listarUsuarios() {
-        return usuarioRepository.findAll();
+    public List<Usuario> listarUsuarios(Long paramSedeId) {
+        Long sedeId = paramSedeId != null ? paramSedeId : TenantContext.getCurrentSede();
+        List<Usuario> todos = usuarioRepository.findAll();
+
+        if (sedeId == null) {
+            return todos; // Si no hay sede seleccionada, devuelve todos
+        }
+
+        // 1. Obtenemos los IDs de los usuarios asignados a esta sede específica
+        List<Long> usuariosDeEstaSede = usuarioSedeRepository.findAll().stream()
+                .filter(us -> us.getSedeId().equals(sedeId))
+                .map(UsuarioSede::getUsuarioId)
+                .toList();
+
+        // 2. Filtramos la lista: Mostramos Administradores Globales + Empleados de esta Sede
+        return todos.stream().filter(u -> 
+                u.getRol().equals("ROLE_SUPER_ADMIN") || 
+                u.getRol().equals("ROLE_ADMIN_EMPRESA") || 
+                usuariosDeEstaSede.contains(u.getId())
+        ).toList();
     }
 }

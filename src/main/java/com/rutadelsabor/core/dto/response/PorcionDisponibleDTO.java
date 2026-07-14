@@ -9,6 +9,7 @@ public class PorcionDisponibleDTO {
     private String nombreProducto; // FIX: añadido
     private BigDecimal porcionesDisponibles;
     private String nivelAdvertencia; // FIX: añadido
+    private String estadoDisponibilidad; // 🔥 NUEVO: Para saber si está pausado en React
 
     // FIX: Setter sobrecargado para aceptar Integer y mantener compatibilidad con el servicio
     public void setPorcionesDisponibles(Integer porciones) {

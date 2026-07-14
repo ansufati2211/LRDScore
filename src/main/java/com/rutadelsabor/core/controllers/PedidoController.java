@@ -1,7 +1,6 @@
 package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.dto.request.AgregarItemsRequestDTO;
-import com.rutadelsabor.core.dto.request.CancelarItemRequestDTO;
 import com.rutadelsabor.core.dto.request.DocumentoCobroRequestDTO;
 import com.rutadelsabor.core.dto.request.PagoRequestDTO;
 import com.rutadelsabor.core.dto.request.PedidoRequestDTO;
@@ -15,6 +14,7 @@ import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IPedidoService;
 import com.rutadelsabor.core.services.reportes.TicketManager;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/pedidos")
@@ -40,35 +41,64 @@ public class PedidoController {
 
     @PostMapping
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
-    public ResponseEntity<Pedido> crearPedido(@RequestBody PedidoRequestDTO dto, Authentication auth) {
-        Usuario mozo = usuarioRepository.findByCorreo(auth.getName())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Mozo no encontrado"));
-        return ResponseEntity.ok(pedidoService.crearPedido(dto, mozo));
+    public ResponseEntity<?> crearPedido(@RequestBody PedidoRequestDTO dto, Authentication auth) {
+        try {
+            Usuario mozo = usuarioRepository.findByCorreo(auth.getName())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Mozo no encontrado"));
+            Pedido pedido = pedidoService.crearPedido(dto, mozo);
+            return ResponseEntity.ok(Map.of("message", "Pedido creado exitosamente", "id", pedido.getId()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Error al crear: " + e.getMessage()));
+        }
     }
 
+    // 🔥 MODO DEBUG ACTIVADO PARA REVELAR EL ERROR 500 EXACTO 🔥
     @PutMapping("/{id}/confirmar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
-    public ResponseEntity<String> confirmarPedido(@PathVariable Long id) {
-        pedidoService.confirmarPedido(id);
-        return ResponseEntity.ok("Pedido confirmado y enviado a cocina.");
+    public ResponseEntity<?> confirmarPedido(@PathVariable Long id) {
+        try {
+            pedidoService.confirmarPedido(id);
+            return ResponseEntity.ok(Map.of("message", "Pedido confirmado y enviado a cocina."));
+        } catch (Exception e) {
+            e.printStackTrace(); // Imprime la traza roja en la consola de Java (IntelliJ/Eclipse)
+            String mensajePincipal = e.getMessage() != null ? e.getMessage() : "Error Nulo";
+            String causaRaiz = e.getCause() != null ? e.getCause().getMessage() : "Sin causa raíz";
+            
+            // Le mandamos a React exactamente qué falló
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "message", "Fallo en Backend al confirmar: " + mensajePincipal,
+                    "detalles", causaRaiz
+            ));
+        }
     }
 
-    @PutMapping("/{id}/entregar")
+@PutMapping("/{id}/entregar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
-    public ResponseEntity<String> entregarPedido(@PathVariable Long id) {
-        pedidoService.entregarPedido(id);
-        return ResponseEntity.ok("Pedido marcado como entregado a la mesa.");
+    public ResponseEntity<?> entregarPedido(@PathVariable Long id) {
+        try {
+            pedidoService.entregarPedido(id);
+            return ResponseEntity.ok(Map.of("message", "Pedido marcado como entregado a la mesa."));
+        } catch (Exception e) {
+            e.printStackTrace();
+            String mensajePincipal = e.getMessage() != null ? e.getMessage() : "Error Nulo";
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", "Fallo al entregar: " + mensajePincipal,
+                    "detalles", e.getCause() != null ? e.getCause().getMessage() : "Regla de negocio no cumplida"
+            ));
+        }
     }
 
     @PostMapping("/{id}/pagar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
-    public ResponseEntity<String> procesarPago(
+    public ResponseEntity<Map<String, String>> procesarPago(
             @PathVariable Long id, 
             @RequestBody PagoRequestDTO pago, 
             Authentication auth) {
         Long cajeroId = obtenerUsuarioIdAutenticado(auth);
         pedidoService.procesarPago(id, pago, cajeroId);
-        return ResponseEntity.ok("Pago registrado exitosamente.");
+        return ResponseEntity.ok(Map.of("message", "Pago registrado exitosamente."));
     }
 
     @GetMapping("/{id}")
@@ -95,17 +125,26 @@ public class PedidoController {
 
     @PutMapping("/{id}/descuento")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
-    public ResponseEntity<String> aplicarDescuento(@PathVariable Long id, @RequestParam BigDecimal monto) {
+    public ResponseEntity<Map<String, String>> aplicarDescuento(@PathVariable Long id, @RequestParam BigDecimal monto) {
         pedidoService.aplicarDescuento(id, monto);
-        return ResponseEntity.ok("Descuento de S/ " + monto + " aplicado al pedido.");
+        return ResponseEntity.ok(Map.of("message", "Descuento de S/ " + monto + " aplicado al pedido."));
     }
 
+    // 🔥 MODO DEBUG ACTIVADO PARA CANCELAR 🔥
     @PutMapping("/{id}/cancelar")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
-    public ResponseEntity<String> cancelarPedido(@PathVariable Long id) {
-        pedidoService.cancelarPedido(id);
-        return ResponseEntity.ok("Pedido anulado exitosamente.");
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO', 'ROLE_CAJERO')")
+    public ResponseEntity<?> cancelarPedido(@PathVariable Long id) {
+        try {
+            pedidoService.cancelarPedido(id);
+            return ResponseEntity.ok(Map.of("message", "Pedido anulado exitosamente."));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "message", "Fallo al cancelar: " + e.getMessage()
+            ));
+        }
     }
+    
 
     @PostMapping("/{id}/notificacion/ack")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO', 'ROLE_CAJERO')")
@@ -124,25 +163,33 @@ public class PedidoController {
 
     @PostMapping("/{id}/items")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
-    public ResponseEntity<String> agregarItems(@PathVariable Long id,
+    public ResponseEntity<Map<String, String>> agregarItems(@PathVariable Long id,
                                                @RequestBody AgregarItemsRequestDTO dto) {
         pedidoService.agregarItemsAPedido(id, dto);
-        return ResponseEntity.ok("Ítems agregados y enviados a cocina.");
+        return ResponseEntity.ok(Map.of("message", "Ítems agregados y enviados a cocina."));
     }
 
     @PutMapping("/{id}/items/{detalleId}/cancelar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
-    public ResponseEntity<String> cancelarItem(@PathVariable Long id,
+    public ResponseEntity<?> cancelarItem(@PathVariable Long id,
                                                @PathVariable Long detalleId,
-                                               @RequestBody(required = false) CancelarItemRequestDTO dto,
+                                               @RequestBody(required = false) Map<String, String> payload,
                                                Authentication auth) {
-        boolean esGerente = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_GERENTE_SEDE")
-                            || a.getAuthority().equals("ROLE_ADMIN_EMPRESA")
-                            || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
-        String motivo = dto != null ? dto.getMotivo() : null;
-        pedidoService.cancelarItem(id, detalleId, motivo, esGerente);
-        return ResponseEntity.ok("Ítems cancelados.");
+        try {
+            boolean esGerente = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_GERENTE_SEDE")
+                                || a.getAuthority().equals("ROLE_ADMIN_EMPRESA")
+                                || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+                                
+            String motivo = payload != null ? payload.get("motivo") : null;
+            pedidoService.cancelarItem(id, detalleId, motivo, esGerente);
+            return ResponseEntity.ok(Map.of("message", "Ítems cancelados."));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "message", "Fallo al cancelar el ítem: " + e.getMessage()
+            ));
+        }
     }
 
     @PostMapping("/{id}/documentos-cobro")
