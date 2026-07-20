@@ -1,6 +1,7 @@
 package com.rutadelsabor.core.security;
 
 import com.rutadelsabor.core.config.tenant.TenantContext;
+import io.jsonwebtoken.JwtException; // <-- Nueva importación fundamental
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,7 +13,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-
 import java.io.IOException;
 
 @Component
@@ -29,7 +29,6 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String authHeader = getAuthorizationHeader(request);
-
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 procesarToken(authHeader.substring(7), request);
@@ -51,28 +50,32 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         return header;
     }
 
-    // FIX SonarLint: Reducción de complejidad cognitiva extrayendo la lógica
     private void procesarToken(String jwt, HttpServletRequest request) {
-        String username = jwtProvider.extractUsername(jwt);
-        
-        // Si no hay usuario o ya está autenticado, salimos temprano
-        if (username == null || SecurityContextHolder.getContext().getAuthentication() != null) {
-            return;
-        }
-
-        UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
-
-        if (jwtProvider.validateToken(jwt, userDetails)) {
-            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                    userDetails, null, userDetails.getAuthorities());
-            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authToken);
-
-            TenantContext.setCurrentTenant(jwtProvider.extractEmpresaId(jwt));
-            Long sedeId = jwtProvider.extractSedeId(jwt);
-            if (sedeId != null) {
-                TenantContext.setCurrentSede(sedeId);
+        try {
+            String username = jwtProvider.extractUsername(jwt);
+            
+            if (username == null || SecurityContextHolder.getContext().getAuthentication() != null) {
+                return;
             }
+
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+
+            if (jwtProvider.validateToken(jwt, userDetails)) {
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails, null, userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+
+                TenantContext.setCurrentTenant(jwtProvider.extractEmpresaId(jwt));
+                
+                Long sedeId = jwtProvider.extractSedeId(jwt);
+                if (sedeId != null) {
+                    TenantContext.setCurrentSede(sedeId);
+                }
+            }
+        // FIX: Atrapamos la excepción de Token Expirado/Inválido para evitar el HTTP 500
+        } catch (JwtException e) {
+            logger.warn("Petición rechazada: Token JWT inválido o expirado. " + e.getMessage());
         }
     }
 }

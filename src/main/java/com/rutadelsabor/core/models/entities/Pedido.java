@@ -4,6 +4,8 @@ import com.rutadelsabor.core.models.enums.EstadoPedido;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +38,10 @@ public class Pedido extends BaseSedeEntity {
     @Column(name = "estado_actual", nullable = false, length = 50)
     private EstadoPedido estadoActual;
 
-    @Column(name = "numero_orden")
+    // Generado por el trigger fn_generar_numero_orden (BEFORE INSERT).
+    // @Generated(INSERT): Hibernate no lo escribe y lo re-lee tras el insert.
+    @Generated(event = EventType.INSERT)
+    @Column(name = "numero_orden", insertable = false, updatable = false)
     private Integer numeroOrden;
 
     @Column(name = "subtotal", nullable = false)

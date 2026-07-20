@@ -3,7 +3,6 @@ package com.rutadelsabor.core.models.entities;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,10 +18,10 @@ public class DocumentoCobro extends BaseSedeEntity {
     private Pedido pedido;
 
     @Column(name = "tipo", nullable = false, length = 10)
-    private String tipo; // "ITEMS" | "MONTO"
+    private String tipo;
 
     @Column(name = "monto", precision = 10, scale = 2)
-    private BigDecimal monto; // solo para tipo MONTO
+    private BigDecimal monto;
 
     @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
@@ -31,7 +30,7 @@ public class DocumentoCobro extends BaseSedeEntity {
     private BigDecimal total = BigDecimal.ZERO;
 
     @Column(name = "estado", nullable = false, length = 10)
-    private String estado = "PENDIENTE"; // "PENDIENTE" | "PAGADO"
+    private String estado = "PENDIENTE";
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

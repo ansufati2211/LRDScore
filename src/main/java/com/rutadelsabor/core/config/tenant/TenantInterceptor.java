@@ -8,17 +8,17 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class TenantInterceptor implements HandlerInterceptor {
 
-    // El tenant se establece EXCLUSIVAMENTE desde el JWT en JwtRequestFilter.
-    // Este interceptor no lee ni sobreescribe el tenant: hacerlo permitiría que
-    // cualquier cliente enviara X-Empresa-ID arbitrario y accediera a datos de otra empresa.
-
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        String headerSede = request.getHeader("X-Sede-ID");
+        if (headerSede != null && !headerSede.isBlank()) {
+            TenantContext.setCurrentSede(Long.valueOf(headerSede));
+        }
         return true;
     }
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        // La limpieza del TenantContext la gestiona JwtRequestFilter en su bloque finally.
+        // JwtRequestFilter ya limpia el TenantContext, se gestiona ahí.
     }
 }

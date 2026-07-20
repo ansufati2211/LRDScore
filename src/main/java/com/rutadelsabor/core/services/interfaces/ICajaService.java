@@ -5,8 +5,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public interface ICajaService {
-    SesionCaja abrirCaja(Long cajeroId, BigDecimal montoInicial, Long sedeIdRequest);
+    SesionCaja abrirCaja(Long cajeroId, BigDecimal montoInicial, Long sedeId);
     SesionCaja cerrarCaja(Long sesionCajaId, BigDecimal montoFinalDeclarado);
-    SesionCaja obtenerCajaActivaPorCajero(Long cajeroId, Long sedeIdFiltro);
-    List<SesionCaja> listarHistorialPorCajero(Long cajeroId, Long sedeIdFiltro);
+    SesionCaja obtenerCajaActivaPorCajero(Long cajeroId, Long sedeId);
+    List<SesionCaja> listarHistorialPorCajero(Long cajeroId, Long sedeId);
 }

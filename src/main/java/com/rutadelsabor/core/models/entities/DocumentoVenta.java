@@ -5,7 +5,6 @@ import com.rutadelsabor.core.models.enums.TipoDocumentoVenta;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -33,7 +32,6 @@ public class DocumentoVenta extends BaseSedeEntity {
     @Column(name = "correlativo", nullable = false)
     private Integer correlativo;
 
-    // Receptor — R7-4: FACTURA exige RUC; BOLETA admite DNI/CE/consumidor final
     @Column(name = "tipo_documento_receptor", length = 20)
     private String tipoDocumentoReceptor;
 
@@ -46,7 +44,6 @@ public class DocumentoVenta extends BaseSedeEntity {
     @Column(name = "subtotal", nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
-    // IGV peruano 18 % — solo aplicado en BOLETA/FACTURA; NOTA_VENTA lo deja en cero
     @Column(name = "igv", nullable = false, precision = 12, scale = 2)
     private BigDecimal igv = BigDecimal.ZERO;
 
@@ -60,11 +57,9 @@ public class DocumentoVenta extends BaseSedeEntity {
     @Column(name = "fecha_emision", nullable = false)
     private LocalDateTime fechaEmision;
 
-    // E7-3: anulación modelada como estado + motivo; jamás se borra el comprobante
     @Column(name = "motivo_anulacion", columnDefinition = "TEXT")
     private String motivoAnulacion;
 
-    // Referencia a un documento relacionado (ej. nota de crédito futura para SUNAT)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "documento_referencia_id")
     private DocumentoVenta documentoReferencia;

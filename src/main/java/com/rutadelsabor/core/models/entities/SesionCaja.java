@@ -32,7 +32,6 @@ public class SesionCaja extends BaseSedeEntity {
     @Column(name = "monto_final_declarado")
     private BigDecimal montoFinalDeclarado;
 
-    // Columna generada por Base de Datos. Le decimos a Hibernate que no intente insertarla ni actualizarla.
     @Column(name = "diferencia", insertable = false, updatable = false)
     private BigDecimal diferencia;
 

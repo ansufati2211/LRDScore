@@ -18,38 +18,55 @@ public class VwKdsCocina {
     @Id
     @Column(name = "detalle_id")
     private Long detalleId;
+
     @Column(name = "empresa_id")
     private Long empresaId;
+
     @Column(name = "sede_id")
-    private Long sedeId; // <-- AÑADIDO PARA MULTI-SEDE
+    private Long sedeId;
+
     @Column(name = "pedido_id")
     private Long pedidoId;
+
     @Column(name = "numero_orden")
     private Integer numeroOrden;
+
     @Column(name = "tipo_consumo")
     private String tipoConsumo;
+
     @Column(name = "mesa")
     private String mesa;
+
     @Column(name = "estado_pedido")
     private String estadoPedido;
+
     @Column(name = "notas_generales")
     private String notasGenerales;
+
     @Column(name = "hora_ingreso")
     private OffsetDateTime horaIngreso;
+
     @Column(name = "minutos_transcurridos")
     private Double minutosTranscurridos;
+
     @Column(name = "cantidad")
     private Integer cantidad;
+
     @Column(name = "notas_preparacion")
     private String notasPreparacion;
+
     @Column(name = "producto_id")
     private Long productoId;
+
     @Column(name = "producto")
     private String producto;
+
     @Column(name = "tiempo_preparacion_minutos")
     private Integer tiempoPreparacionMinutos;
+
     @Column(name = "estado_item")
     private String estadoItem;
+
     @Column(name = "numero_comanda")
     private Integer numeroComanda;
 }

@@ -20,14 +20,12 @@ import com.rutadelsabor.core.services.interfaces.IInventarioService;
 import com.rutadelsabor.core.services.interfaces.IPedidoService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-@SuppressWarnings("unused")
 @Service
 public class PedidoServiceImpl implements IPedidoService {
 
@@ -70,6 +68,7 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo) {
         Pedido pedido = new Pedido();
+        // ASIGNACIÓN CLAVE DE LA SEDE
         pedido.setSedeId(TenantContext.resolverSedeEfectiva(dto.getSedeId()));
         pedido.setMozo(mozo);
         pedido.setTipoConsumo(dto.getTipoConsumo());
@@ -78,8 +77,8 @@ public class PedidoServiceImpl implements IPedidoService {
         pedido.setNotasGenerales(dto.getNotasGenerales());
 
         Pedido pedidoGuardado = pedidoRepository.save(pedido);
-        BigDecimal totalCalculado = BigDecimal.ZERO;
 
+        BigDecimal totalCalculado = BigDecimal.ZERO;
         for (PedidoRequestDTO.PedidoItemDTO item : dto.getItems()) {
             Producto producto = productoRepository.findById(item.getProductoId())
                     .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado"));
@@ -100,7 +99,6 @@ public class PedidoServiceImpl implements IPedidoService {
             totalCalculado = totalCalculado.add(subtotal);
         }
 
-        pedidoGuardado.setNumeroOrden(Math.toIntExact(pedidoGuardado.getId()));
         pedidoGuardado.setSubtotal(totalCalculado);
         pedidoGuardado.setTotal(totalCalculado);
         return pedidoRepository.save(pedidoGuardado);
@@ -119,16 +117,16 @@ public class PedidoServiceImpl implements IPedidoService {
                 .filter(p -> p.getEstadoDisponibilidad() != EstadoDisponibilidad.DISPONIBLE)
                 .map(Producto::getNombre)
                 .toList();
+
         if (!agotados.isEmpty()) {
             throw new ReglaNegocioException(
                     "El pedido contiene producto(s) agotado(s) y no puede confirmarse: " + String.join(", ", agotados));
         }
 
         inventarioService.reservarInsumosParaPedido(id, pedido.getDetalles());
-
         pedido.setEstadoActual(EstadoPedido.RECIBIDO);
+
         Long empresaId = TenantContext.getCurrentTenant();
-        
         String mesaSegura = pedido.getIdentificadorMesaReferencia();
         if (mesaSegura == null || mesaSegura.trim().isEmpty()) {
             mesaSegura = "Barra";
@@ -146,18 +144,12 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public Pedido entregarPedido(Long id) {
         Pedido pedido = obtenerPedidoInterno(id);
-
-        // 🔥 Se elimina la restricción estricta. El mozo ahora puede marcar el pedido 
-        // como ENTREGADO directamente, forzando también el estado de sus detalles.
-        
         pedido.setEstadoActual(EstadoPedido.ENTREGADO);
-
         pedido.getDetalles().forEach(detalle -> {
             if (detalle.getEstadoItem() != EstadoItem.CANCELADO) {
                 detalle.setEstadoItem(EstadoItem.ENTREGADO);
             }
         });
-
         return pedidoRepository.save(pedido);
     }
 
@@ -165,7 +157,6 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public void procesarPago(Long pedidoId, PagoRequestDTO pagoDTO, Long cajeroId) {
         Pedido pedido = obtenerPedidoInterno(pedidoId);
-
         if (pedido.getEstadoActual() != EstadoPedido.LISTO && pedido.getEstadoActual() != EstadoPedido.ENTREGADO) {
             throw new ReglaNegocioException("El pedido debe estar LISTO o ENTREGADO para procesar el pago.");
         }
@@ -230,7 +221,6 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public void cancelarItem(Long pedidoId, Long detalleId, String motivo, boolean esGerente) {
         Pedido pedido = obtenerPedidoInterno(pedidoId);
-
         if (pedido.getEstadoActual() == EstadoPedido.PAGADO || pedido.getEstadoActual() == EstadoPedido.CANCELADO) {
             throw new ReglaNegocioException("No se puede cancelar ítems de un pedido " + pedido.getEstadoActual() + ".");
         }
@@ -348,13 +338,10 @@ public class PedidoServiceImpl implements IPedidoService {
         return pedidos.stream().map(this::mapToActivoResponseDTO).toList();
     }
 
-    // --- MÓDULO 4 ---
-
     @Override
     @Transactional
     public void agregarItemsAPedido(Long pedidoId, AgregarItemsRequestDTO dto) {
         Pedido pedido = obtenerPedidoInterno(pedidoId);
-
         EstadoPedido estado = pedido.getEstadoActual();
         if (estado == EstadoPedido.BORRADOR || estado == EstadoPedido.PAGADO || estado == EstadoPedido.CANCELADO) {
             throw new ReglaNegocioException("No se pueden agregar ítems a un pedido en estado " + estado + ".");
@@ -373,14 +360,12 @@ public class PedidoServiceImpl implements IPedidoService {
             detalle.setPedido(pedido);
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
-
             BigDecimal subtotal = producto.getPrecioVenta().multiply(new BigDecimal(item.getCantidad()));
             detalle.setPrecioUnitario(producto.getPrecioVenta());
             detalle.setSubtotal(subtotal);
             detalle.setNotasPreparacion(item.getNotasPreparacion());
             detalle.setEstadoItem(EstadoItem.PENDIENTE);
             detalle.setNumeroComanda(nuevaComanda);
-
             return detalleRepository.save(detalle);
         }).toList();
 
@@ -389,6 +374,7 @@ public class PedidoServiceImpl implements IPedidoService {
         BigDecimal incremento = nuevosDetalles.stream()
                 .map(PedidoDetalle::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         pedido.setSubtotal(pedido.getSubtotal().add(incremento));
         pedido.setTotal(pedido.getSubtotal().subtract(
                 pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO));
@@ -396,8 +382,8 @@ public class PedidoServiceImpl implements IPedidoService {
         if (estado == EstadoPedido.LISTO || estado == EstadoPedido.ENTREGADO) {
             pedido.setEstadoActual(EstadoPedido.RECIBIDO);
         }
-        pedidoRepository.save(pedido);
 
+        pedidoRepository.save(pedido);
         Long empresaId = TenantContext.getCurrentTenant();
         sseEmitterManager.publicarTenant(empresaId, "NUEVA_COMANDA", Map.of(
                 "pedidoId", pedidoId,
@@ -414,9 +400,9 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public DocumentoCobroResponseDTO crearDocumentoCobro(Long pedidoId, DocumentoCobroRequestDTO dto) {
         Pedido pedido = obtenerPedidoInterno(pedidoId);
-
         DocumentoCobro doc = new DocumentoCobro();
         doc.setPedido(pedido);
+        doc.setSedeId(pedido.getSedeId());
         doc.setTipo(dto.getTipo());
 
         if ("ITEMS".equals(dto.getTipo())) {
@@ -427,6 +413,7 @@ public class PedidoServiceImpl implements IPedidoService {
                     .filter(d -> dto.getDetalleIds().contains(d.getId())
                               && d.getEstadoItem() != EstadoItem.CANCELADO)
                     .toList();
+
             BigDecimal subtotal = seleccionados.stream()
                     .map(PedidoDetalle::getSubtotal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -443,7 +430,6 @@ public class PedidoServiceImpl implements IPedidoService {
         } else {
             throw new ReglaNegocioException("Tipo de documento inválido. Use 'ITEMS' o 'MONTO'.");
         }
-
         doc.setEstado("PENDIENTE");
         return mapToDocumentoCobroResponseDTO(documentoCobroRepository.save(doc));
     }
@@ -498,7 +484,6 @@ public class PedidoServiceImpl implements IPedidoService {
             pedido.setEstadoActual(EstadoPedido.PAGADO);
             pedidoRepository.save(pedido);
         }
-
         return mapToDocumentoCobroResponseDTO(doc);
     }
 
@@ -520,7 +505,7 @@ public class PedidoServiceImpl implements IPedidoService {
         if (activos.stream().anyMatch(d -> d.getEstadoItem() == EstadoItem.LISTO))          return EstadoPedido.LISTO;
         return EstadoPedido.ENTREGADO;
     }
-    
+
     private Pedido obtenerPedidoInterno(Long id) {
         return pedidoRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pedido no encontrado con ID: " + id));
@@ -537,7 +522,6 @@ public class PedidoServiceImpl implements IPedidoService {
         dto.setTotal(p.getTotal());
         dto.setFechaCreacion(p.getCreatedAt());
         dto.setRequiereRevision(p.getRequiereRevision());
-
         List<PedidoActivoResponseDTO.DetallePlanoDTO> items = p.getDetalles().stream().map(d -> {
             PedidoActivoResponseDTO.DetallePlanoDTO item = new PedidoActivoResponseDTO.DetallePlanoDTO();
             item.setDetalleId(d.getId());
@@ -551,7 +535,6 @@ public class PedidoServiceImpl implements IPedidoService {
             item.setNumeroComanda(d.getNumeroComanda());
             return item;
         }).toList();
-
         dto.setItems(items);
         return dto;
     }
@@ -569,6 +552,4 @@ public class PedidoServiceImpl implements IPedidoService {
                 .toList());
         return dto;
     }
-
-    
 }

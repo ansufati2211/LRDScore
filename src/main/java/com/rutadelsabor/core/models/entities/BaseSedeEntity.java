@@ -9,8 +9,7 @@ import lombok.Setter;
 @Setter
 @MappedSuperclass
 public abstract class BaseSedeEntity extends BaseTenantEntity {
-
+    
     @Column(name = "sede_id", nullable = false)
     private Long sedeId;
-
 }
