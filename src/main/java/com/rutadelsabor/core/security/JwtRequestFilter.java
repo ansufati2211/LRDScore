@@ -1,7 +1,7 @@
 package com.rutadelsabor.core.security;
 
 import com.rutadelsabor.core.config.tenant.TenantContext;
-import io.jsonwebtoken.JwtException; // <-- Nueva importación fundamental
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,53 +27,49 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String authHeader = getAuthorizationHeader(request);
-        try {
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                procesarToken(authHeader.substring(7), request);
-            }
-            filterChain.doFilter(request, response);
-        } finally {
-            TenantContext.clear(); // Limpia EMPRESA y SEDE
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+
+        String jwt = extraerJwt(request);
+
+        if (jwt != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            autenticarUsuario(jwt, request);
         }
+        
+        chain.doFilter(request, response);
     }
 
-    private String getAuthorizationHeader(HttpServletRequest request) {
+    private String extraerJwt(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
-        if (header == null) {
-            String tokenParam = request.getParameter("token");
-            if (tokenParam != null && !tokenParam.isBlank()) {
-                return "Bearer " + tokenParam;
-            }
+        if (header != null && header.startsWith("Bearer ")) {
+            return header.substring(7);
         }
-        return header;
+        String tokenParam = request.getParameter("token");
+        if (tokenParam != null && !tokenParam.isBlank()) {
+            return tokenParam;
+        }
+        return null;
     }
 
-    private void procesarToken(String jwt, HttpServletRequest request) {
+    private void autenticarUsuario(String jwt, HttpServletRequest request) {
         try {
             String username = jwtProvider.extractUsername(jwt);
-            
-            if (username == null || SecurityContextHolder.getContext().getAuthentication() != null) {
-                return;
-            }
+            if (username != null) {
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+                if (jwtProvider.validateToken(jwt, userDetails)) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails, null, userDetails.getAuthorities());
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
 
-            if (jwtProvider.validateToken(jwt, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
-
-                TenantContext.setCurrentTenant(jwtProvider.extractEmpresaId(jwt));
-                
-                Long sedeId = jwtProvider.extractSedeId(jwt);
-                if (sedeId != null) {
-                    TenantContext.setCurrentSede(sedeId);
+                    TenantContext.setCurrentTenant(jwtProvider.extractEmpresaId(jwt));
+                    Long sedeId = jwtProvider.extractSedeId(jwt);
+                    if (sedeId != null) {
+                        TenantContext.setCurrentSede(sedeId);
+                    }
                 }
             }
-        // FIX: Atrapamos la excepción de Token Expirado/Inválido para evitar el HTTP 500
         } catch (JwtException e) {
             logger.warn("Petición rechazada: Token JWT inválido o expirado. " + e.getMessage());
         }

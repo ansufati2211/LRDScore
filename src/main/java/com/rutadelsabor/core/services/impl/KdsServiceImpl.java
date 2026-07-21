@@ -115,7 +115,9 @@ public class KdsServiceImpl implements IKdsService {
     @Override
     @Transactional
     public void marcarPreparando(Long pedidoId, Long usuarioId) {
+        
         Pedido pedido = pedidoRepository.findById(pedidoId).orElseThrow();
+        
         if (pedido.getEstadoActual() != EstadoPedido.RECIBIDO) throw new ReglaNegocioException("El pedido debe estar RECIBIDO.");
         
         pedidoRepository.iniciarPreparacionYDescontarStock(pedidoId, usuarioId);

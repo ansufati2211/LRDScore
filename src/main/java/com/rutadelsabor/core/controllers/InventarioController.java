@@ -2,7 +2,7 @@ package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.dto.request.*;
-import com.rutadelsabor.core.dto.response.InsumoBajoStockDTO; // <-- NUEVA IMPORTACIÓN
+import com.rutadelsabor.core.dto.response.InsumoBajoStockDTO;
 import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import com.rutadelsabor.core.models.entities.*;
 import com.rutadelsabor.core.repositories.UsuarioRepository;
@@ -13,10 +13,15 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.math.BigDecimal;
 
+@SuppressWarnings("squid:S4684")
 @RestController
 @RequestMapping("/api/inventario")
 public class InventarioController {
+    
     private final IInventarioService inventarioService;
     private final UsuarioRepository usuarioRepository;
 
@@ -87,7 +92,6 @@ public class InventarioController {
         return ResponseEntity.ok("Insumo desactivado exitosamente.");
     }
 
-    // CORRECCIÓN: Retorna InsumoBajoStockDTO en lugar de Insumo puro
     @GetMapping("/alertas")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<List<InsumoBajoStockDTO>> alertasStockBajo() {
@@ -106,6 +110,23 @@ public class InventarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 inventarioService.agregarInsumoAReceta(dto.getProductoId(), dto.getInsumoId(), dto.getCantidadRequerida(), dto.getUnidadMedida())
         );
+    }
+
+    @PostMapping("/productos/{productoId}/receta")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<String> actualizarRecetaCompleta(
+            @PathVariable Long productoId, 
+            @RequestBody List<Map<String, Object>> detalles) {
+        
+        Map<Long, BigDecimal> insumosYCantidades = new HashMap<>();
+        for (Map<String, Object> d : detalles) {
+            Long insumoId = Long.valueOf(d.get("insumoId").toString());
+            BigDecimal cant = new BigDecimal(d.get("cantidadUsada").toString());
+            insumosYCantidades.put(insumoId, cant);
+        }
+        
+        inventarioService.actualizarRecetaCompleta(productoId, insumosYCantidades);
+        return ResponseEntity.ok("Receta actualizada con éxito");
     }
 
     @GetMapping("/kardex/{insumoId}")

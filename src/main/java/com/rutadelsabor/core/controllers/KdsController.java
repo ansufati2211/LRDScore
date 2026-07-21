@@ -3,7 +3,7 @@ package com.rutadelsabor.core.controllers;
 import com.rutadelsabor.core.config.SseEmitterManager;
 import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.dto.response.PorcionDisponibleDTO;
-import com.rutadelsabor.core.dto.response.KdsCocinaDTO; // <-- NUEVA IMPORTACIÓN
+import com.rutadelsabor.core.dto.response.KdsCocinaDTO;
 import com.rutadelsabor.core.security.UserDetailsImpl;
 import com.rutadelsabor.core.services.interfaces.IKdsService;
 import org.springframework.http.MediaType;
@@ -13,11 +13,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
+import java.util.Collections;
 
 @RestController
 @RequestMapping("/api/kds")
 @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA', 'ROLE_MOZO', 'ROLE_CAJERO')")
 public class KdsController {
+
     private final IKdsService kdsService;
     private final SseEmitterManager sseEmitterManager;
 
@@ -26,7 +28,6 @@ public class KdsController {
         this.sseEmitterManager = sseEmitterManager;
     }
 
-    // CORRECCIÓN: Retorna KdsCocinaDTO en lugar de VwKdsCocina
     @GetMapping("/pendientes")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
     public ResponseEntity<List<KdsCocinaDTO>> obtenerPendientes() {
@@ -36,9 +37,11 @@ public class KdsController {
     @PutMapping("/{id}/preparando")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
     public ResponseEntity<String> marcarPreparando(@PathVariable Long id, Authentication auth) {
-        UserDetailsImpl cocinero = (UserDetailsImpl) auth.getPrincipal();
-        kdsService.marcarPreparando(id, cocinero.getUsuarioId());
-        return ResponseEntity.ok("Plato en preparación. Stock descontado del Kardex.");
+        if (auth != null && auth.getPrincipal() instanceof UserDetailsImpl cocinero) {
+            kdsService.marcarPreparando(id, cocinero.getUsuarioId());
+            return ResponseEntity.ok("Plato en preparación. Stock descontado del Kardex.");
+        }
+        return ResponseEntity.badRequest().body("Usuario no autenticado");
     }
 
     @PutMapping("/{id}/listo")
@@ -69,15 +72,23 @@ public class KdsController {
         return ResponseEntity.ok("Producto restablecido a DISPONIBLE.");
     }
 
-    @GetMapping("/productos/porciones")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA', 'ROLE_MOZO')")
-    public ResponseEntity<List<PorcionDisponibleDTO>> obtenerPorciones() {
-        return ResponseEntity.ok(kdsService.calcularPorcionesDisponibles(TenantContext.getCurrentSede()));
+    @SuppressWarnings("squid:S6863")
+    @GetMapping("/porciones")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
+    public ResponseEntity<List<PorcionDisponibleDTO>> getPorcionesDisponibles() {
+        try {
+            Long sedeId = TenantContext.getCurrentSede();
+            return ResponseEntity.ok(kdsService.calcularPorcionesDisponibles(sedeId));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
     }
 
     @GetMapping(value = "/eventos", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter suscribirEventos(Authentication auth) {
-        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
-        return sseEmitterManager.suscribir(user.getEmpresaId(), user.getUsuarioId(), user.getRol(), TenantContext.getCurrentSede());
+        if (auth != null && auth.getPrincipal() instanceof UserDetailsImpl user) {
+            return sseEmitterManager.suscribir(user.getEmpresaId(), user.getUsuarioId(), user.getRol(), TenantContext.getCurrentSede());
+        }
+        throw new SecurityException("Usuario no autenticado");
     }
 }

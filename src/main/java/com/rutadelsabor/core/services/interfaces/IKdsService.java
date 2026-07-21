@@ -14,6 +14,7 @@ public interface IKdsService {
     void marcarAgotadoTemporal(Long productoId);
     void marcarAgotadoServicio(Long productoId);
     void revertirDisponible(Long productoId);
+    // FIRMA ORIGINAL RESPETADA
     List<PorcionDisponibleDTO> calcularPorcionesDisponibles(Long sedeIdFiltro);
     Map<String, Object> obtenerRecetaKds(Long productoId);
 }
