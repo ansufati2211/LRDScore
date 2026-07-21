@@ -9,8 +9,8 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
 import java.util.Arrays;
+import java.util.Collections;
 
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
@@ -40,7 +40,13 @@ public class CorsConfig implements WebMvcConfigurer {
         ));
         
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Empresa-ID", "Accept", "Origin"));
+        
+        // SOLUCIÓN NUCLEAR CORS: Permitir TODOS los headers entrantes (*)
+        config.setAllowedHeaders(Collections.singletonList("*"));
+        
+        // También exponemos los headers por si el frontend necesita leerlos
+        config.setExposedHeaders(Arrays.asList("Authorization", "X-Sede-ID"));
+        
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
