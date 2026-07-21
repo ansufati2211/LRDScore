@@ -17,8 +17,10 @@ import com.rutadelsabor.core.repositories.UsuarioRepository;
 import com.rutadelsabor.core.services.interfaces.ICajaService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -98,5 +100,21 @@ public class CajaServiceImpl implements ICajaService {
     @Transactional(readOnly = true)
     public List<SesionCaja> listarHistorialPorCajero(Long cajeroId, Long sedeId) {
         return cajaRepository.findByCajeroIdOrderByFechaAperturaDesc(cajeroId);
+    }
+
+    // 🔥 FIX: Nueva función que cruza las transacciones para el Arqueo Financiero
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> obtenerResumenCajaActiva(Long cajeroId, Long sedeId) {
+        SesionCaja caja = cajaRepository.findByCajeroIdAndEstado(cajeroId, EstadoCaja.ABIERTA).orElse(null);
+        Map<String, BigDecimal> resumen = new HashMap<>();
+        if (caja == null) return resumen;
+
+        resumen.put("EFECTIVO", transaccionPagoRepository.sumarPorSesionYMetodo(caja.getId(), MetodoPago.EFECTIVO));
+        resumen.put("YAPE", transaccionPagoRepository.sumarPorSesionYMetodo(caja.getId(), MetodoPago.YAPE));
+        resumen.put("PLIN", transaccionPagoRepository.sumarPorSesionYMetodo(caja.getId(), MetodoPago.PLIN));
+        resumen.put("TARJETA", transaccionPagoRepository.sumarPorSesionYMetodo(caja.getId(), MetodoPago.TARJETA));
+
+        return resumen;
     }
 }

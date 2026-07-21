@@ -8,7 +8,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/caja")
@@ -41,5 +43,12 @@ public class CajaController {
     public ResponseEntity<List<SesionCaja>> listarHistorial(@RequestParam(required = false) Long sedeId, Authentication auth) {
         UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
         return ResponseEntity.ok(cajaService.listarHistorialPorCajero(cajero.getUsuarioId(), sedeId));
+    }
+
+    // 🔥 FIX: Nuevo endpoint para consultar los montos por método de pago
+    @GetMapping("/activa/resumen")
+    public ResponseEntity<Map<String, BigDecimal>> obtenerResumenCajaActiva(@RequestParam(required = false) Long sedeId, Authentication auth) {
+        UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();
+        return ResponseEntity.ok(cajaService.obtenerResumenCajaActiva(cajero.getUsuarioId(), sedeId));
     }
 }
