@@ -33,7 +33,7 @@ public class UsuarioServiceImpl implements IUsuarioService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    @Override
+  @Override
     @Transactional
     public Usuario crearUsuario(UsuarioRequestDTO dto) {
         if (usuarioRepository.existsByCorreo(dto.getCorreo())) {
@@ -48,22 +48,31 @@ public class UsuarioServiceImpl implements IUsuarioService {
         usuario.setPasswordHash(passwordEncoder.encode(dto.getPassword()));
         usuario.setRol(dto.getRol().toUpperCase());
         usuario.setEmpresaId(empresaId);
+        usuario.setEstadoRegistro(true);
 
         Usuario savedUser = usuarioRepository.save(usuario);
 
-        if (dto.getSedeId() != null) {
+        // 🔥 FIX CREACIÓN: Si el DTO no trae Sede, intentamos agarrar la sede activa del TenantContext
+        Long sedeParaAsignar = dto.getSedeId();
+        if (sedeParaAsignar == null) {
+            sedeParaAsignar = TenantContext.getCurrentSede();
+        }
+
+        // Validamos y guardamos la relación con la sede
+        if (sedeParaAsignar != null) {
             UsuarioSede us = new UsuarioSede();
             us.setUsuarioId(savedUser.getId());
-            us.setSedeId(dto.getSedeId());
+            us.setSedeId(sedeParaAsignar);
             us.setEmpresaId(empresaId);
+            us.setEstadoRegistro(true); 
             usuarioSedeRepository.save(us);
         } else if (!dto.getRol().equals("ROLE_ADMIN_EMPRESA") && !dto.getRol().equals("ROLE_SUPER_ADMIN")) {
-            throw new ReglaNegocioException("Debe asignar obligatoriamente un Local (sedeId) a un rol operativo.");
+            throw new ReglaNegocioException("Debe asignar obligatoriamente un Local (Sede) a un rol operativo.");
         }
 
         return savedUser;
     }
-
+    
     @Override
     @Transactional
     public Usuario actualizarUsuario(Long id, UsuarioRequestDTO dto) {
@@ -71,7 +80,7 @@ public class UsuarioServiceImpl implements IUsuarioService {
                 .orElseThrow(() -> new RecursoNoEncontradoException(USUARIO_NO_ENCONTRADO));
         
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
-        if (dto.getCorreo() != null) u.setCorreo(dto.getCorreo()); // 🚨 ARREGLO: Ahora sí guardará el nuevo correo
+        if (dto.getCorreo() != null) u.setCorreo(dto.getCorreo()); 
         if (dto.getRol() != null) u.setRol(dto.getRol().toUpperCase());
         
         return usuarioRepository.save(u);
@@ -114,16 +123,25 @@ public class UsuarioServiceImpl implements IUsuarioService {
         usuarioRepository.save(u);
     }
 
-    @Override
+@Override
     @Transactional
     public void activarUsuario(Long id) {
         Usuario u = usuarioRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException(USUARIO_NO_ENCONTRADO));
+        
         u.setEstadoRegistro(true);
         usuarioRepository.save(u);
+
+        // 🔥 FIX ACTIVACIÓN: Al reactivar el usuario, también debemos reactivar su relación con la sede (si la tiene)
+        usuarioSedeRepository.findAll().stream()
+                .filter(us -> us.getUsuarioId().equals(id) && us.getEmpresaId().equals(u.getEmpresaId()))
+                .forEach(us -> {
+                    us.setEstadoRegistro(true);
+                    usuarioSedeRepository.save(us);
+                });
     }
 
-@Override
+    @Override
     @Transactional(readOnly = true)
     public List<Usuario> listarUsuarios(Long paramSedeId) {
         Long sedeId = paramSedeId != null ? paramSedeId : TenantContext.getCurrentSede();

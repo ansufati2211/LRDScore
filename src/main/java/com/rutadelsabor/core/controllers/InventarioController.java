@@ -30,6 +30,9 @@ public class InventarioController {
         this.usuarioRepository = usuarioRepository;
     }
 
+    // ==========================================
+    // CATEGORÍAS
+    // ==========================================
     @GetMapping("/categorias")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<List<Categoria>> listarCategorias() {
@@ -42,6 +45,32 @@ public class InventarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearCategoria(categoria));
     }
 
+    // Faltaba este endpoint para actualizar
+    @PutMapping("/categorias/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<Categoria> actualizarCategoria(@PathVariable Long id, @RequestBody CategoriaRequestDTO dto) {
+        return ResponseEntity.ok(inventarioService.actualizarCategoria(id, dto));
+    }
+
+    // Faltaba este endpoint para inhabilitar
+    @DeleteMapping("/categorias/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<String> desactivarCategoria(@PathVariable Long id) {
+        inventarioService.desactivarCategoria(id);
+        return ResponseEntity.ok("Categoría desactivada exitosamente.");
+    }
+
+    // 🔥 FIX: Endpoint faltante para Activar Categoría
+    @PutMapping("/categorias/{id}/activar")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<String> activarCategoria(@PathVariable Long id) {
+        inventarioService.activarCategoria(id);
+        return ResponseEntity.ok("Categoría activada exitosamente.");
+    }
+
+    // ==========================================
+    // PRODUCTOS
+    // ==========================================
     @GetMapping("/productos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<List<Producto>> listarProductos() {
@@ -67,9 +96,30 @@ public class InventarioController {
         return ResponseEntity.ok("Producto desactivado exitosamente.");
     }
 
+    // 🔥 FIX: Endpoint faltante para Activar Producto
+    @PutMapping("/productos/{id}/activar")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<String> activarProducto(@PathVariable Long id) {
+        inventarioService.activarProducto(id);
+        return ResponseEntity.ok("Producto activado exitosamente.");
+    }
+
+    // ==========================================
+    // INSUMOS
+    // ==========================================
     @GetMapping("/insumos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
-    public ResponseEntity<List<Insumo>> listarInsumos() {
+    public ResponseEntity<?> listarInsumos(@RequestParam(required = false) Long paramSedeId) {
+        
+        // 🔥 FIX: Si React no envía la sede, la extraemos automáticamente de la sesión segura del usuario
+        Long sedeEfectiva = (paramSedeId != null) ? paramSedeId : TenantContext.getCurrentSede();
+
+        if (sedeEfectiva != null) {
+            // Esto devuelve el catálogo "fusionado" con la tabla insumo_sede (Trae stockActual y costoUnitario)
+            return ResponseEntity.ok(inventarioService.listarInsumosConCosto(sedeEfectiva));
+        }
+        
+        // Fallback: Catálogo vacío si por algún motivo extremo no hay sede
         return ResponseEntity.ok(inventarioService.listarInsumos());
     }
 
@@ -92,6 +142,17 @@ public class InventarioController {
         return ResponseEntity.ok("Insumo desactivado exitosamente.");
     }
 
+    // 🔥 FIX: Endpoint faltante para Activar Insumo
+    @PutMapping("/insumos/{id}/activar")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<String> activarInsumo(@PathVariable Long id) {
+        inventarioService.activarInsumo(id);
+        return ResponseEntity.ok("Insumo activado exitosamente.");
+    }
+
+    // ==========================================
+    // ALERTAS, RECETAS Y KARDEX
+    // ==========================================
     @GetMapping("/alertas")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<List<InsumoBajoStockDTO>> alertasStockBajo() {

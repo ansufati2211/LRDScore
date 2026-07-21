@@ -89,7 +89,7 @@ public class PedidoController {
     }
 
     @PutMapping("/{id}/cancelar")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
     public ResponseEntity<String> cancelarPedido(@PathVariable Long id) {
         pedidoService.cancelarPedido(id);
         return ResponseEntity.ok("Pedido anulado exitosamente.");
@@ -101,12 +101,12 @@ public class PedidoController {
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/{id}/ticket")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
+    // 🔥 FIX: Añadimos charset UTF-8 en la firma para que soporte tildes y eñes
+    @GetMapping(value = "/{id}/ticket", produces = "text/plain; charset=UTF-8")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<String> imprimirTicket(@PathVariable Long id) {
         Pedido pedido = pedidoService.obtenerPedido(id);
         return ResponseEntity.ok()
-                .contentType(org.springframework.http.MediaType.TEXT_PLAIN)
                 .body(ticketManager.generarTicketTermico(pedido));
     }
 

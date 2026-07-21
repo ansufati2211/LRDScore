@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.models.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.rutadelsabor.core.models.enums.EstadoSuscripcion;
 import jakarta.persistence.*;
@@ -21,9 +22,10 @@ public class Suscripcion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 🔥 FIX: Corta el bucle infinito hacia Empresa
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "empresa_id", nullable = false)
-    @JsonIgnoreProperties("suscripcionVigente")
     private Empresa empresa;
 
     // EAGER: el interceptor necesita plan + modulos inmediatamente
@@ -47,7 +49,7 @@ public class Suscripcion {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-@PrePersist
+    @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;

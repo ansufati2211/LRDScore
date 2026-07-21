@@ -1,5 +1,6 @@
 package com.rutadelsabor.core.models.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.rutadelsabor.core.models.enums.Modulo;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -19,6 +20,8 @@ public class PlanModulo {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 🔥 FIX: Corta el bucle infinito hacia Plan
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "plan_id", nullable = false)
     private Plan plan;

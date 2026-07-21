@@ -12,8 +12,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import java.util.List;
+
 import java.util.Collections;
+import java.util.List;
+import java.util.Map; // 🔥 Importación necesaria para el JSON de la receta
 
 @RestController
 @RequestMapping("/api/kds")
@@ -72,6 +74,13 @@ public class KdsController {
         return ResponseEntity.ok("Producto restablecido a DISPONIBLE.");
     }
 
+    @PutMapping("/{id}/deshacer")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
+    public ResponseEntity<String> deshacerPedido(@PathVariable("id") Long id) {
+        kdsService.deshacerPedido(id);
+        return ResponseEntity.ok("Pedido recuperado a la cocina exitosamente.");
+    }
+
     @SuppressWarnings("squid:S6863")
     @GetMapping("/porciones")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA')")
@@ -82,6 +91,13 @@ public class KdsController {
         } catch (Exception e) {
             return ResponseEntity.ok(Collections.emptyList());
         }
+    }
+
+    // 🔥 FIX: Añadimos el endpoint faltante para consultar la receta y sus ingredientes
+    @GetMapping("/recetas/producto/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA', 'ROLE_MOZO')")
+    public ResponseEntity<Map<String, Object>> obtenerRecetaKds(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(kdsService.obtenerRecetaKds(id));
     }
 
     @GetMapping(value = "/eventos", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

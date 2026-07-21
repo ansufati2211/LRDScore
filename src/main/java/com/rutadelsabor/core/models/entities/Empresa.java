@@ -30,10 +30,9 @@ public class Empresa {
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
 
-    // Referencia a la suscripción vigente del tenant (FK opcional en empresas.suscripcion_vigente_id)
-    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+@ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "suscripcion_vigente_id")
-    @JsonIgnoreProperties("empresa")
+    @JsonIgnoreProperties({"empresa", "hibernateLazyInitializer", "handler"}) // 🔥 Esto evita el Error 500
     private Suscripcion suscripcionVigente;
 
     @Column(name = "created_at", updatable = false)
@@ -42,7 +41,7 @@ public class Empresa {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-@PrePersist
+    @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;

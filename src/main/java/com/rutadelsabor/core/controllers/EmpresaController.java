@@ -4,13 +4,14 @@ import com.rutadelsabor.core.config.tenant.TenantContext;
 import com.rutadelsabor.core.dto.request.EmpresaRequestDTO;
 import com.rutadelsabor.core.models.entities.Empresa;
 import com.rutadelsabor.core.repositories.EmpresaRepository;
+import com.rutadelsabor.core.exceptions.RecursoNoEncontradoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/empresas")
+@RequestMapping("/api/v1/empresas") 
 public class EmpresaController {
 
     private final EmpresaRepository empresaRepository;
@@ -20,16 +21,16 @@ public class EmpresaController {
     }
 
     @GetMapping("/mi-empresa")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN_EMPRESA')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<Empresa> obtenerMiEmpresa() {
         Long empresaId = TenantContext.getCurrentTenant();
-        return empresaRepository.findById(empresaId)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Empresa empresa = empresaRepository.findById(empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Empresa no encontrada"));
+        return ResponseEntity.ok(empresa);
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<Empresa> registrarEmpresa(@RequestBody EmpresaRequestDTO request) {
         Empresa empresa = new Empresa();
         empresa.setNombreComercial(request.getNombreComercial());
@@ -40,7 +41,7 @@ public class EmpresaController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN_EMPRESA')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA')")
     public ResponseEntity<Empresa> actualizarEmpresa(@PathVariable Long id, @RequestBody EmpresaRequestDTO request) {
         Long tenantId = TenantContext.getCurrentTenant();
         Long objetivo = (tenantId != null) ? tenantId : id;
@@ -56,7 +57,7 @@ public class EmpresaController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<Void> darDeBajaEmpresa(@PathVariable Long id) {
         return empresaRepository.findById(id)
                 .map(empresa -> {
