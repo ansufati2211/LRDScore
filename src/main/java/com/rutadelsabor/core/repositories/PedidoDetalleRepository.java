@@ -28,7 +28,6 @@ public interface PedidoDetalleRepository extends JpaRepository<PedidoDetalle, Lo
             @Param("fin") LocalDateTime fin,
             @Param("estadoCancelado") EstadoItem estadoCancelado);
 
-    // NUEVAS CONSULTAS MULTI-SEDE
     @Query("SELECT d FROM PedidoDetalle d JOIN FETCH d.producto p JOIN FETCH p.categoria c JOIN FETCH d.pedido ped " +
            "WHERE ped.sedeId = :sedeId AND ped.estadoActual = :estadoPedido AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
            "AND d.estadoItem != :estadoExcluido")
@@ -46,4 +45,46 @@ public interface PedidoDetalleRepository extends JpaRepository<PedidoDetalle, Lo
             @Param("inicio") LocalDateTime inicio,
             @Param("fin") LocalDateTime fin,
             @Param("estadoCancelado") EstadoItem estadoCancelado);
+
+    // ==========================================
+    // TOP PRODUCTOS MÁS VENDIDOS
+    // ==========================================
+    @Query("SELECT d.producto.nombre, SUM(d.cantidad) FROM PedidoDetalle d JOIN d.pedido ped " +
+           "WHERE ped.sedeId = :sedeId AND ped.estadoActual IN ('PAGADO', 'ENTREGADO') " +
+           "AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
+           "AND d.estadoItem != 'CANCELADO' " +
+           "GROUP BY d.producto.nombre ORDER BY SUM(d.cantidad) DESC")
+    List<Object[]> findTopProductosVendidosPorSede(
+            @Param("sedeId") Long sedeId, @Param("inicio") LocalDateTime inicio, 
+            @Param("fin") LocalDateTime fin, org.springframework.data.domain.Pageable pageable);
+
+    @Query("SELECT d.producto.nombre, SUM(d.cantidad) FROM PedidoDetalle d JOIN d.pedido ped " +
+           "WHERE ped.empresaId = :empresaId AND ped.estadoActual IN ('PAGADO', 'ENTREGADO') " +
+           "AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
+           "AND d.estadoItem != 'CANCELADO' " +
+           "GROUP BY d.producto.nombre ORDER BY SUM(d.cantidad) DESC")
+    List<Object[]> findTopProductosVendidosGlobal(
+            @Param("empresaId") Long empresaId, @Param("inicio") LocalDateTime inicio, 
+            @Param("fin") LocalDateTime fin, org.springframework.data.domain.Pageable pageable);
+
+    // ==========================================
+    // VENTAS POR CATEGORÍA
+    // ==========================================
+    @Query("SELECT c.nombre, SUM(d.subtotal) FROM PedidoDetalle d JOIN d.pedido ped JOIN d.producto p JOIN p.categoria c " +
+           "WHERE ped.sedeId = :sedeId AND ped.estadoActual IN ('PAGADO', 'ENTREGADO') " +
+           "AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
+           "AND d.estadoItem != :estadoExcluido " +
+           "GROUP BY c.nombre ORDER BY SUM(d.subtotal) DESC")
+    List<Object[]> findVentasPorCategoriaSede(
+            @Param("sedeId") Long sedeId, @Param("inicio") LocalDateTime inicio, 
+            @Param("fin") LocalDateTime fin, @Param("estadoExcluido") EstadoItem estadoExcluido);
+
+    @Query("SELECT c.nombre, SUM(d.subtotal) FROM PedidoDetalle d JOIN d.pedido ped JOIN d.producto p JOIN p.categoria c " +
+           "WHERE ped.empresaId = :empresaId AND ped.estadoActual IN ('PAGADO', 'ENTREGADO') " +
+           "AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
+           "AND d.estadoItem != :estadoExcluido " +
+           "GROUP BY c.nombre ORDER BY SUM(d.subtotal) DESC")
+    List<Object[]> findVentasPorCategoriaGlobal(
+            @Param("empresaId") Long empresaId, @Param("inicio") LocalDateTime inicio, 
+            @Param("fin") LocalDateTime fin, @Param("estadoExcluido") EstadoItem estadoExcluido);
 }

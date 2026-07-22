@@ -14,6 +14,7 @@ import com.rutadelsabor.core.repositories.PedidoDetalleRepository;
 import com.rutadelsabor.core.repositories.VwDashboardVentasRepository;
 import com.rutadelsabor.core.services.interfaces.IReporteService;
 import com.rutadelsabor.core.services.reportes.ExcelReportManager;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -90,9 +91,46 @@ public class ReporteServiceImpl implements IReporteService {
             detalle = new ArrayList<>(agrupado.values());
         }
 
+        // --- 1. TOP 5 PRODUCTOS MÁS VENDIDOS ---
+        List<Object[]> topObj;
+        if (sedeId != null) {
+            topObj = detalleRepository.findTopProductosVendidosPorSede(
+                    sedeId, inicio.atStartOfDay(), fin.atTime(23, 59, 59), PageRequest.of(0, 5));
+        } else {
+            topObj = detalleRepository.findTopProductosVendidosGlobal(
+                    empresaId, inicio.atStartOfDay(), fin.atTime(23, 59, 59), PageRequest.of(0, 5));
+        }
+
+        List<DashboardVentasDTO.ProductoTopDTO> topProductos = topObj.stream().map(o -> {
+            DashboardVentasDTO.ProductoTopDTO p = new DashboardVentasDTO.ProductoTopDTO();
+            p.setProducto((String) o[0]);
+            p.setCantidadVendida(((Number) o[1]).longValue());
+            return p;
+        }).toList();
+
+        // --- 2. VENTAS POR CATEGORÍA ---
+        List<Object[]> catObj;
+        if (sedeId != null) {
+            catObj = detalleRepository.findVentasPorCategoriaSede(
+                    sedeId, inicio.atStartOfDay(), fin.atTime(23, 59, 59), EstadoItem.CANCELADO);
+        } else {
+            catObj = detalleRepository.findVentasPorCategoriaGlobal(
+                    empresaId, inicio.atStartOfDay(), fin.atTime(23, 59, 59), EstadoItem.CANCELADO);
+        }
+
+        List<DashboardVentasDTO.CategoriaTopDTO> ventasCategorias = catObj.stream().map(o -> {
+            DashboardVentasDTO.CategoriaTopDTO c = new DashboardVentasDTO.CategoriaTopDTO();
+            c.setCategoria((String) o[0]);
+            c.setIngresosTotales((BigDecimal) o[1]);
+            return c;
+        }).toList();
+
         dto.setIngresosTotalesMensuales(totalIngresos);
         dto.setPedidosTotalesMensuales(totalPedidos);
         dto.setDetalleDiario(detalle);
+        dto.setProductosMasVendidos(topProductos);
+        dto.setVentasPorCategoria(ventasCategorias);
+        
         return dto;
     }
 
@@ -153,7 +191,6 @@ public class ReporteServiceImpl implements IReporteService {
                     
             BigDecimal ingresoEfectivo = subtotalItem.multiply(factorDescuento).setScale(2, RoundingMode.HALF_UP);
             
-            // 🚨 SOLUCIÓN NULL POINTER: Si el costo consumido es nulo (pedidos antiguos), lo tratamos como 0
             BigDecimal costoConsumido = pd.getCostoUnitarioConsumido() != null ? pd.getCostoUnitarioConsumido() : BigDecimal.ZERO;
             
             BigDecimal costoItem = costoConsumido
@@ -196,7 +233,6 @@ public class ReporteServiceImpl implements IReporteService {
 
         BigDecimal costoMerma = BigDecimal.ZERO;
         for (PedidoDetalle pd : merma) {
-            // 🚨 SOLUCIÓN NULL POINTER EN MERMAS
             BigDecimal costoConsumido = pd.getCostoUnitarioConsumido() != null ? pd.getCostoUnitarioConsumido() : BigDecimal.ZERO;
             
             costoMerma = costoMerma.add(costoConsumido

@@ -9,14 +9,32 @@ import java.util.List;
 @Setter
 public class DashboardVentasDTO {
     private BigDecimal ingresosTotalesMensuales;
-    private Long pedidosTotalesMensuales; // Modificado a Long
+    private Long pedidosTotalesMensuales;
     private List<DetalleDiaDTO> detalleDiario;
+    
+    // Listas inyectadas para los nuevos gráficos
+    private List<ProductoTopDTO> productosMasVendidos;
+    private List<CategoriaTopDTO> ventasPorCategoria;
 
     @Getter
     @Setter
     public static class DetalleDiaDTO {
         private String fecha;
         private BigDecimal ingresos;
-        private Long pedidos; // Modificado a Long
+        private Long pedidos;
+    }
+
+    @Getter
+    @Setter
+    public static class ProductoTopDTO {
+        private String producto;
+        private Long cantidadVendida;
+    }
+
+    @Getter
+    @Setter
+    public static class CategoriaTopDTO {
+        private String categoria;
+        private BigDecimal ingresosTotales;
     }
 }
