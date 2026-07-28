@@ -1,6 +1,5 @@
 package com.rutadelsabor.core.dto.request;
 
-import com.rutadelsabor.core.models.enums.MetodoPago;
 import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;

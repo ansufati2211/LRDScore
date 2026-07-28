@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -91,7 +92,7 @@ public class KdsServiceImpl implements IKdsService {
             dto.setItems(entry.getValue().stream().map(v -> {
                 KdsCocinaDTO.KdsItemDTO item = new KdsCocinaDTO.KdsItemDTO();
                 item.setDetalleId(v.getDetalleId());
-                item.setProductoId(v.getProductoId()); // NUEVO: Extraemos el ID
+                item.setProductoId(v.getProductoId());
                 item.setProducto(v.getProducto());
                 item.setCantidad(v.getCantidad());
                 item.setNotasPreparacion(v.getNotasPreparacion());
@@ -99,7 +100,6 @@ public class KdsServiceImpl implements IKdsService {
                 item.setEstadoItem(v.getEstadoItem());
                 item.setNumeroComanda(v.getNumeroComanda());
                 
-                // 🔥 NUEVO: Extraemos la Categoría para el Filtro de Estaciones en React
                 productoRepository.findById(v.getProductoId()).ifPresent(p -> {
                     if (p.getCategoria() != null) {
                         item.setCategoriaNombre(p.getCategoria().getNombre());
@@ -115,7 +115,6 @@ public class KdsServiceImpl implements IKdsService {
     @Override
     @Transactional
     public void marcarPreparando(Long pedidoId, Long usuarioId) {
-        
         Pedido pedido = pedidoRepository.findById(pedidoId).orElseThrow();
         
         if (pedido.getEstadoActual() != EstadoPedido.RECIBIDO) throw new ReglaNegocioException("El pedido debe estar RECIBIDO.");
@@ -144,9 +143,6 @@ public class KdsServiceImpl implements IKdsService {
         ));
     }
 
-    // ==========================================
-    // 🔥 NUEVO: DESHACER PEDIDO (UNDO)
-    // ==========================================
     @Override
     @Transactional
     public void deshacerPedido(Long pedidoId) {
@@ -157,7 +153,6 @@ public class KdsServiceImpl implements IKdsService {
             throw new ReglaNegocioException("Solo se pueden recuperar pedidos terminados (LISTO o ENTREGADO).");
         }
         
-        // Lo devolvemos a la pantalla de cocina
         pedido.setEstadoActual(EstadoPedido.EN_PREPARACION);
         
         pedido.getDetalles().forEach(d -> {
@@ -168,13 +163,9 @@ public class KdsServiceImpl implements IKdsService {
         
         pedidoRepository.save(pedido);
         
-        // Avisamos a todos que hay un ticket de vuelta
         sseEmitterManager.publicarTenantYSede(pedido.getEmpresaId(), pedido.getSedeId(), "NUEVO_PEDIDO", Map.of("pedidoId", pedidoId));
     }
 
-    // ==========================================
-    // 🔥 NUEVO: VISOR DE RECETAS
-    // ==========================================
     @Override
     @Transactional(readOnly = true)
     public Map<String, Object> obtenerRecetaKds(Long productoId) {
@@ -188,14 +179,15 @@ public class KdsServiceImpl implements IKdsService {
                         "unidad", rd.getUnidadMedida()
                 )).toList();
         
-        return Map.of(
-                "producto", p.getNombre(),
-                "instrucciones", p.getDescripcion() != null && !p.getDescripcion().isBlank() ? p.getDescripcion() : "No hay instrucciones de preparación registradas. Guíese por la receta estándar.",
-                "ingredientes", ingredientes
-        );
+        // 🔥 FIX: Usamos HashMap en lugar de Map.of() para soportar valores nulos (imagenUrl puede ser null)
+        Map<String, Object> respuesta = new HashMap<>();
+        respuesta.put("producto", p.getNombre());
+        respuesta.put("imagenUrl", p.getImagenUrl()); 
+        respuesta.put("instrucciones", p.getDescripcion() != null && !p.getDescripcion().isBlank() ? p.getDescripcion() : "No hay instrucciones de preparación registradas. Guíese por la receta estándar.");
+        respuesta.put("ingredientes", ingredientes);
+        
+        return respuesta;
     }
-
-    // --- MÉTODOS DE DISPONIBILIDAD (Agotados) ---
 
     @Override @Transactional
     public void marcarAgotadoTemporal(Long productoId) { cambiarDisponibilidad(productoId, EstadoDisponibilidad.AGOTADO_TEMPORAL); }
@@ -235,8 +227,6 @@ public class KdsServiceImpl implements IKdsService {
                     dto.setNombreProducto(p.getNombre());
                     dto.setPorcionesDisponibles(minPorciones.intValue());
                     dto.setNivelAdvertencia(minPorciones.intValue() <= 5 ? "ALTO" : "NORMAL");
-                    
-                    // 🔥 NUEVO: Enviamos el estado a React
                     dto.setEstadoDisponibilidad(p.getEstadoDisponibilidad().name());
                     
                     return dto;

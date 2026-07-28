@@ -1,7 +1,6 @@
 package com.rutadelsabor.core.models.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.rutadelsabor.core.models.enums.EstadoSuscripcion;
 import jakarta.persistence.*;
 import lombok.Getter;

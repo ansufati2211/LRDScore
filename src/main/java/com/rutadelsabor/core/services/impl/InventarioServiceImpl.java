@@ -84,6 +84,8 @@ public class InventarioServiceImpl implements IInventarioService {
         if (dto.getNombre() != null) p.setNombre(dto.getNombre());
         if (dto.getPrecioVenta() != null) p.setPrecioVenta(dto.getPrecioVenta());
         if (dto.getTagsBusqueda() != null) p.setTagsBusqueda(dto.getTagsBusqueda());
+        if (dto.getImagenUrl() != null) p.setImagenUrl(dto.getImagenUrl()); 
+        if (dto.getDescripcion() != null) p.setDescripcion(dto.getDescripcion());
         if (dto.getCategoriaId() != null) p.setCategoria(categoriaRepository.findById(dto.getCategoriaId()).orElseThrow());
         if (dto.getEsPreparado() != null) p.setEsPreparado(dto.getEsPreparado());
         if (dto.getTiempoPreparacionMinutos() != null) p.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos());
@@ -304,10 +306,19 @@ public class InventarioServiceImpl implements IInventarioService {
         kardexRepository.save(k);
     }
 
-    // 🔥 FIX 500: PASAMOS SEDE_ID DIRECTAMENTE DESDE EL PEDIDO
     @Override @Transactional
     public void reservarInsumosParaPedido(Long pedidoId, List<PedidoDetalle> detalles) {
         if (detalles.isEmpty()) return;
+
+        for (PedidoDetalle d : detalles) {
+            if (Boolean.TRUE.equals(d.getProducto().getEsPreparado())) {
+                List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(d.getProducto().getId());
+                if (receta == null || receta.isEmpty()) {
+                    throw new ReglaNegocioException("El plato '" + d.getProducto().getNombre() + "' requiere preparación pero no tiene receta configurada. Contacte al administrador.");
+                }
+            }
+        }
+        
         Long sedeIdDelPedido = detalles.get(0).getPedido().getSedeId();
 
         Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
@@ -315,7 +326,7 @@ public class InventarioServiceImpl implements IInventarioService {
         List<InsumoFaltanteDTO> faltantes = validarDisponibilidadReserva(totalPorInsumo, insumosPorId);
         
         if (!faltantes.isEmpty()) throw new StockInsuficienteException(faltantes);
-                 
+                  
         Usuario operador = detalles.get(0).getPedido().getMozo();
 
         for (Map.Entry<Long, BigDecimal> entry : totalPorInsumo.entrySet()) {
@@ -378,7 +389,6 @@ public class InventarioServiceImpl implements IInventarioService {
         return requiereRevision;
     }
 
-    // 🔥 FIX 500: PASAMOS SEDE_ID DIRECTAMENTE DESDE EL PEDIDO
     @Override @Transactional
     public boolean convertirItemsAConsumo(Long pedidoId, List<PedidoDetalle> detalles) {
         if (detalles.isEmpty()) return false;
@@ -394,7 +404,6 @@ public class InventarioServiceImpl implements IInventarioService {
         return reqRevision;
     }
 
-    // 🔥 FIX 500: PASAMOS SEDE_ID DIRECTAMENTE DESDE EL PEDIDO
     @Override @Transactional
     public void liberarReservaDeItems(Long pedidoId, List<PedidoDetalle> detalles) {
         if (detalles.isEmpty()) return;
@@ -428,7 +437,6 @@ public class InventarioServiceImpl implements IInventarioService {
         return total;
     }
 
-    // 🔥 FIX 500: SE RECIBE EL SEDE_ID COMO PARÁMETRO SEGURO, YA NO DEPENDE DEL HILO
     private Map<Long, InsumoSede> cargarInventarioSede(Map<Long, BigDecimal> totalPorInsumo, Long sedeIdDelPedido) {
         Map<Long, InsumoSede> map = new LinkedHashMap<>();
         for (Long insumoId : totalPorInsumo.keySet()) {

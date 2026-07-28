@@ -45,14 +45,12 @@ public class InventarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearCategoria(categoria));
     }
 
-    // Faltaba este endpoint para actualizar
     @PutMapping("/categorias/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<Categoria> actualizarCategoria(@PathVariable Long id, @RequestBody CategoriaRequestDTO dto) {
         return ResponseEntity.ok(inventarioService.actualizarCategoria(id, dto));
     }
 
-    // Faltaba este endpoint para inhabilitar
     @DeleteMapping("/categorias/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> desactivarCategoria(@PathVariable Long id) {
@@ -60,7 +58,6 @@ public class InventarioController {
         return ResponseEntity.ok("Categoría desactivada exitosamente.");
     }
 
-    // 🔥 FIX: Endpoint faltante para Activar Categoría
     @PutMapping("/categorias/{id}/activar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> activarCategoria(@PathVariable Long id) {
@@ -77,9 +74,28 @@ public class InventarioController {
         return ResponseEntity.ok(inventarioService.listarProductos());
     }
 
+    // 🔥 FIX: Actualizado para usar ProductoRequestDTO y mapear todos los campos correctamente
     @PostMapping("/productos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
-    public ResponseEntity<Producto> crearProducto(@RequestBody Producto producto) {
+    public ResponseEntity<Producto> crearProducto(@RequestBody ProductoRequestDTO dto) {
+        Producto producto = new Producto();
+        producto.setNombre(dto.getNombre());
+        producto.setPrecioVenta(dto.getPrecioVenta());
+        producto.setEsPreparado(dto.getEsPreparado() != null ? dto.getEsPreparado() : true);
+        producto.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos() != null ? dto.getTiempoPreparacionMinutos() : 5);
+        
+        // Mapeo de los nuevos campos
+        producto.setTagsBusqueda(dto.getTagsBusqueda());
+        producto.setImagenUrl(dto.getImagenUrl());
+        producto.setDescripcion(dto.getDescripcion());
+
+        // Mapeo de la categoría (Hibernate permite guardar usando solo el ID de referencia)
+        if (dto.getCategoriaId() != null) {
+            Categoria categoriaRef = new Categoria();
+            categoriaRef.setId(dto.getCategoriaId());
+            producto.setCategoria(categoriaRef);
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioService.crearProducto(producto));
     }
 
@@ -96,7 +112,6 @@ public class InventarioController {
         return ResponseEntity.ok("Producto desactivado exitosamente.");
     }
 
-    // 🔥 FIX: Endpoint faltante para Activar Producto
     @PutMapping("/productos/{id}/activar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> activarProducto(@PathVariable Long id) {
@@ -111,15 +126,12 @@ public class InventarioController {
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<?> listarInsumos(@RequestParam(required = false) Long paramSedeId) {
         
-        // 🔥 FIX: Si React no envía la sede, la extraemos automáticamente de la sesión segura del usuario
         Long sedeEfectiva = (paramSedeId != null) ? paramSedeId : TenantContext.getCurrentSede();
 
         if (sedeEfectiva != null) {
-            // Esto devuelve el catálogo "fusionado" con la tabla insumo_sede (Trae stockActual y costoUnitario)
             return ResponseEntity.ok(inventarioService.listarInsumosConCosto(sedeEfectiva));
         }
         
-        // Fallback: Catálogo vacío si por algún motivo extremo no hay sede
         return ResponseEntity.ok(inventarioService.listarInsumos());
     }
 
@@ -142,7 +154,6 @@ public class InventarioController {
         return ResponseEntity.ok("Insumo desactivado exitosamente.");
     }
 
-    // 🔥 FIX: Endpoint faltante para Activar Insumo
     @PutMapping("/insumos/{id}/activar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> activarInsumo(@PathVariable Long id) {
