@@ -17,7 +17,6 @@ public class UsuarioRequestDTO {
     @Email(message = "El correo no tiene formato válido")
     private String correo;
 
-    // Requerida al crear, opcional al actualizar (si es null/blank se mantiene la existente)
     private String password;
 
     @NotBlank(message = "El rol es obligatorio")
@@ -27,6 +26,6 @@ public class UsuarioRequestDTO {
     )
     private String rol;
 
-    private Long sedeId; // <-- AÑADIDO PARA ASIGNAR LOCAL AL EMPLEADO
+    private Long sedeId; 
     
 }

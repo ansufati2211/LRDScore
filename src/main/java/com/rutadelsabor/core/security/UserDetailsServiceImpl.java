@@ -30,7 +30,6 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             Usuario usuario = usuarioRepository.findByCorreoYEmpresa(correo, empresaId)
                     .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
             
-            // Integración Multi-Sede
             Long sedeId = usuarioRepository.findPrimerSedeIdByUsuarioId(usuario.getId()).orElse(null);
             
             return new UserDetailsImpl(usuario, sedeId);

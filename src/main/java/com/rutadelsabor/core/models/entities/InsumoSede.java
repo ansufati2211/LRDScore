@@ -44,7 +44,6 @@ public class InsumoSede {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Relaciones de solo lectura para evitar cascadas accidentales
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "insumo_id", insertable = false, updatable = false)
     private Insumo insumo;

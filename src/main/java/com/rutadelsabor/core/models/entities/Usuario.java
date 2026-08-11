@@ -11,7 +11,7 @@ import lombok.Setter;
 @Table(name = "usuarios")
 @Getter
 @Setter
-// PROTECCIÓN DE SEGURIDAD: Evita fugas del hash si la entidad se serializa
+
 @JsonIgnoreProperties({"passwordHash"}) 
 public class Usuario extends BaseTenantEntity {
 

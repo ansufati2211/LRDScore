@@ -29,7 +29,6 @@ public class Plan {
     @Column(name = "estado_registro")
     private Boolean estadoRegistro = true;
 
-    // EAGER porque el interceptor necesita la lista en cada chequeo de módulo
     @OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
     private List<PlanModulo> modulos = new ArrayList<>();
 

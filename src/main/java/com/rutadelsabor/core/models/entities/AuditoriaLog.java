@@ -15,7 +15,7 @@ public class AuditoriaLog extends BaseTenantEntity {
     private Usuario usuario;
 
     @Column(nullable = false, length = 50)
-    private String modulo; // Ej: CAJA, KDS, ADMIN
+    private String modulo; 
 
     @Column(nullable = false, length = 255)
     private String accion;

@@ -21,8 +21,6 @@ public class SuscripcionServiceImpl implements ISuscripcionService {
         this.suscripcionRepository = suscripcionRepository;
     }
 
-    // R0-3: devuelve los módulos habilitados para el frontend en el response de login.
-    // E0-1: si VENCIDA, solo módulos core (lectura); premium se ocultan.
     @Override
     public List<String> obtenerModulosHabilitados(Long empresaId) {
         return obtenerSuscripcionVigente(empresaId)

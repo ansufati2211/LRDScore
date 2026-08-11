@@ -20,6 +20,7 @@ import com.rutadelsabor.core.services.interfaces.IInventarioService;
 import com.rutadelsabor.core.services.interfaces.IPedidoService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -68,7 +69,6 @@ public class PedidoServiceImpl implements IPedidoService {
     @Transactional
     public Pedido crearPedido(PedidoRequestDTO dto, Usuario mozo) {
         Pedido pedido = new Pedido();
-        // ASIGNACIÓN CLAVE DE LA SEDE
         pedido.setSedeId(TenantContext.resolverSedeEfectiva(dto.getSedeId()));
         pedido.setMozo(mozo);
         pedido.setTipoConsumo(dto.getTipoConsumo());
@@ -123,8 +123,30 @@ public class PedidoServiceImpl implements IPedidoService {
                     "El pedido contiene producto(s) agotado(s) y no puede confirmarse: " + String.join(", ", agotados));
         }
 
-        inventarioService.reservarInsumosParaPedido(id, pedido.getDetalles());
-        pedido.setEstadoActual(EstadoPedido.RECIBIDO);
+        List<PedidoDetalle> detallesPreparados = pedido.getDetalles().stream()
+                .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO && Boolean.TRUE.equals(d.getProducto().getEsPreparado()))
+                .toList();
+
+        List<PedidoDetalle> detallesDirectos = pedido.getDetalles().stream()
+                .filter(d -> d.getEstadoItem() != EstadoItem.CANCELADO && !Boolean.TRUE.equals(d.getProducto().getEsPreparado()))
+                .toList();
+
+        if (!detallesPreparados.isEmpty()) {
+            inventarioService.reservarInsumosParaPedido(id, detallesPreparados);
+        }
+
+        if (!detallesDirectos.isEmpty()) {
+            inventarioService.convertirItemsAConsumo(id, detallesDirectos);
+            for (PedidoDetalle d : detallesDirectos) {
+                d.setEstadoItem(EstadoItem.LISTO);
+            }
+        }
+
+        if (!detallesPreparados.isEmpty()) {
+            pedido.setEstadoActual(EstadoPedido.RECIBIDO);
+        } else {
+            pedido.setEstadoActual(EstadoPedido.LISTO);
+        }
 
         Long empresaId = TenantContext.getCurrentTenant();
         String mesaSegura = pedido.getIdentificadorMesaReferencia();
@@ -132,12 +154,20 @@ public class PedidoServiceImpl implements IPedidoService {
             mesaSegura = "Barra";
         }
         
-        sseEmitterManager.publicarTenant(empresaId, "NUEVO_PEDIDO", Map.of(
+        Map<String, Object> payload = Map.of(
                 "pedidoId", id,
                 "mesa", mesaSegura,
-                "estado", "RECIBIDO"
-        ));
-        return pedido;
+                "estado", pedido.getEstadoActual().name()
+        );
+
+        if (!detallesPreparados.isEmpty()) {
+            sseEmitterManager.publicarTenantYSede(empresaId, pedido.getSedeId(), "NUEVO_PEDIDO", payload);
+        }
+        if (pedido.getEstadoActual() == EstadoPedido.LISTO) {
+            sseEmitterManager.publicarTenantYSede(empresaId, pedido.getSedeId(), "PEDIDO_LISTO", payload);
+        }
+
+        return pedidoRepository.save(pedido);
     }
 
     @Override
@@ -369,7 +399,24 @@ public class PedidoServiceImpl implements IPedidoService {
             return detalleRepository.save(detalle);
         }).toList();
 
-        inventarioService.reservarInsumosParaPedido(pedidoId, nuevosDetalles);
+        List<PedidoDetalle> detallesPreparados = nuevosDetalles.stream()
+                .filter(d -> Boolean.TRUE.equals(d.getProducto().getEsPreparado()))
+                .toList();
+
+        List<PedidoDetalle> detallesDirectos = nuevosDetalles.stream()
+                .filter(d -> !Boolean.TRUE.equals(d.getProducto().getEsPreparado()))
+                .toList();
+
+        if (!detallesPreparados.isEmpty()) {
+            inventarioService.reservarInsumosParaPedido(pedidoId, detallesPreparados);
+        }
+
+        if (!detallesDirectos.isEmpty()) {
+            inventarioService.convertirItemsAConsumo(pedidoId, detallesDirectos);
+            for (PedidoDetalle d : detallesDirectos) {
+                d.setEstadoItem(EstadoItem.LISTO);
+            }
+        }
 
         BigDecimal incremento = nuevosDetalles.stream()
                 .map(PedidoDetalle::getSubtotal)
@@ -379,21 +426,24 @@ public class PedidoServiceImpl implements IPedidoService {
         pedido.setTotal(pedido.getSubtotal().subtract(
                 pedido.getDescuento() != null ? pedido.getDescuento() : BigDecimal.ZERO));
 
-        if (estado == EstadoPedido.LISTO || estado == EstadoPedido.ENTREGADO) {
+        if ((estado == EstadoPedido.LISTO || estado == EstadoPedido.ENTREGADO) && !detallesPreparados.isEmpty()) {
             pedido.setEstadoActual(EstadoPedido.RECIBIDO);
         }
 
         pedidoRepository.save(pedido);
-        Long empresaId = TenantContext.getCurrentTenant();
-        sseEmitterManager.publicarTenant(empresaId, "NUEVA_COMANDA", Map.of(
-                "pedidoId", pedidoId,
-                "numeroComanda", nuevaComanda,
-                "items", nuevosDetalles.stream().map(d -> Map.of(
-                        "detalleId", d.getId(),
-                        "producto", d.getProducto().getNombre(),
-                        "cantidad", d.getCantidad()
-                )).toList()
-        ));
+        
+        if (!detallesPreparados.isEmpty()) {
+            Long empresaId = TenantContext.getCurrentTenant();
+            sseEmitterManager.publicarTenantYSede(empresaId, pedido.getSedeId(), "NUEVA_COMANDA", Map.of(
+                    "pedidoId", pedidoId,
+                    "numeroComanda", nuevaComanda,
+                    "items", detallesPreparados.stream().map(d -> Map.of(
+                            "detalleId", d.getId(),
+                            "producto", d.getProducto().getNombre(),
+                            "cantidad", d.getCantidad()
+                    )).toList()
+            ));
+        }
     }
 
     @Override

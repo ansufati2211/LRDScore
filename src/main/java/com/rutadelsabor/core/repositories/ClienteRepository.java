@@ -9,7 +9,6 @@ import java.util.Optional;
 
 public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     
-    // Método necesario para buscar clientes por su DNI o RUC desde el KDS/Caja
     Optional<Cliente> findByNumeroDocumento(String numeroDocumento);
     
 }

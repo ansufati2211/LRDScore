@@ -15,7 +15,7 @@ public class RecetaDetalle extends BaseTenantEntity {
     @JoinColumn(name = "producto_id", nullable = false)
     private Producto producto;
 
-    @ManyToOne(fetch = FetchType.EAGER) // <-- EAGER es obligatorio aquí
+    @ManyToOne(fetch = FetchType.EAGER) 
     @JoinColumn(name = "insumo_id", nullable = false)
     private Insumo insumo;
 
@@ -25,5 +25,4 @@ public class RecetaDetalle extends BaseTenantEntity {
     @Column(name = "unidad_medida", length = 20)
     private String unidadMedida;
 
-    // 🛑 ELIMINAMOS "estadoRegistro" PORQUE LA BD NO LO TIENE NI LO NECESITA 🛑
 }

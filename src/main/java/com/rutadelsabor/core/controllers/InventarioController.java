@@ -30,9 +30,6 @@ public class InventarioController {
         this.usuarioRepository = usuarioRepository;
     }
 
-    // ==========================================
-    // CATEGORÍAS
-    // ==========================================
     @GetMapping("/categorias")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<List<Categoria>> listarCategorias() {
@@ -65,16 +62,12 @@ public class InventarioController {
         return ResponseEntity.ok("Categoría activada exitosamente.");
     }
 
-    // ==========================================
-    // PRODUCTOS
-    // ==========================================
     @GetMapping("/productos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<List<Producto>> listarProductos() {
         return ResponseEntity.ok(inventarioService.listarProductos());
     }
 
-    // 🔥 FIX: Actualizado para usar ProductoRequestDTO y mapear todos los campos correctamente
     @PostMapping("/productos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<Producto> crearProducto(@RequestBody ProductoRequestDTO dto) {
@@ -84,12 +77,10 @@ public class InventarioController {
         producto.setEsPreparado(dto.getEsPreparado() != null ? dto.getEsPreparado() : true);
         producto.setTiempoPreparacionMinutos(dto.getTiempoPreparacionMinutos() != null ? dto.getTiempoPreparacionMinutos() : 5);
         
-        // Mapeo de los nuevos campos
         producto.setTagsBusqueda(dto.getTagsBusqueda());
         producto.setImagenUrl(dto.getImagenUrl());
         producto.setDescripcion(dto.getDescripcion());
 
-        // Mapeo de la categoría (Hibernate permite guardar usando solo el ID de referencia)
         if (dto.getCategoriaId() != null) {
             Categoria categoriaRef = new Categoria();
             categoriaRef.setId(dto.getCategoriaId());
@@ -118,10 +109,6 @@ public class InventarioController {
         inventarioService.activarProducto(id);
         return ResponseEntity.ok("Producto activado exitosamente.");
     }
-
-    // ==========================================
-    // INSUMOS
-    // ==========================================
     @GetMapping("/insumos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<?> listarInsumos(@RequestParam(required = false) Long paramSedeId) {
@@ -161,9 +148,6 @@ public class InventarioController {
         return ResponseEntity.ok("Insumo activado exitosamente.");
     }
 
-    // ==========================================
-    // ALERTAS, RECETAS Y KARDEX
-    // ==========================================
     @GetMapping("/alertas")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<List<InsumoBajoStockDTO>> alertasStockBajo() {

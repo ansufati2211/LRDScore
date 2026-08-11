@@ -49,10 +49,8 @@ class KdsControllerSecurityTest {
         when(moduloInterceptor.preHandle(any(HttpServletRequest.class), any(HttpServletResponse.class), any()))
                 .thenReturn(true);
                 
-        // FIX: Agregado any() para simular el nuevo parámetro sedeIdFiltro
         when(kdsService.obtenerPedidosPendientes(any())).thenReturn(Collections.emptyList());
         
-        // FIX: Agregado any() para simular el nuevo parámetro sedeId en la suscripción SSE
         when(sseEmitterManager.suscribir(any(), any(), any(), any())).thenReturn(new SseEmitter());
     }
 

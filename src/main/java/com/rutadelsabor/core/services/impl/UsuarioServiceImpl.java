@@ -51,14 +51,11 @@ public class UsuarioServiceImpl implements IUsuarioService {
         usuario.setEstadoRegistro(true);
 
         Usuario savedUser = usuarioRepository.save(usuario);
-
-        // 🔥 FIX CREACIÓN: Si el DTO no trae Sede, intentamos agarrar la sede activa del TenantContext
         Long sedeParaAsignar = dto.getSedeId();
         if (sedeParaAsignar == null) {
             sedeParaAsignar = TenantContext.getCurrentSede();
         }
 
-        // Validamos y guardamos la relación con la sede
         if (sedeParaAsignar != null) {
             UsuarioSede us = new UsuarioSede();
             us.setUsuarioId(savedUser.getId());
@@ -132,7 +129,6 @@ public class UsuarioServiceImpl implements IUsuarioService {
         u.setEstadoRegistro(true);
         usuarioRepository.save(u);
 
-        // 🔥 FIX ACTIVACIÓN: Al reactivar el usuario, también debemos reactivar su relación con la sede (si la tiene)
         usuarioSedeRepository.findAll().stream()
                 .filter(us -> us.getUsuarioId().equals(id) && us.getEmpresaId().equals(u.getEmpresaId()))
                 .forEach(us -> {
@@ -148,16 +144,14 @@ public class UsuarioServiceImpl implements IUsuarioService {
         List<Usuario> todos = usuarioRepository.findAll();
 
         if (sedeId == null) {
-            return todos; // Si no hay sede seleccionada, devuelve todos
+            return todos; 
         }
 
-        // 1. Obtenemos los IDs de los usuarios asignados a esta sede específica
         List<Long> usuariosDeEstaSede = usuarioSedeRepository.findAll().stream()
                 .filter(us -> us.getSedeId().equals(sedeId))
                 .map(UsuarioSede::getUsuarioId)
                 .toList();
 
-        // 2. Filtramos la lista: Mostramos Administradores Globales + Empleados de esta Sede
         return todos.stream().filter(u -> 
                 u.getRol().equals("ROLE_SUPER_ADMIN") || 
                 u.getRol().equals("ROLE_ADMIN_EMPRESA") || 

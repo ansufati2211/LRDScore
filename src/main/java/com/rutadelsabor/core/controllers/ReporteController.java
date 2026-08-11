@@ -24,7 +24,6 @@ public class ReporteController {
         this.reporteService = reporteService;
     }
 
-    // CORRECCIÓN: Inyecta la sede desde el contexto
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardVentasDTO> obtenerDashboard(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
@@ -32,7 +31,6 @@ public class ReporteController {
         return ResponseEntity.ok(reporteService.obtenerResumenVentas(inicio, fin, TenantContext.getCurrentSede()));
     }
 
-    // CORRECCIÓN: Inyecta la sede desde el contexto
     @GetMapping("/margen")
     @RequiereModulo(Modulo.REPORTES_AVANZADOS)
     public ResponseEntity<MargenVentasDTO> obtenerMargen(
@@ -41,7 +39,6 @@ public class ReporteController {
         return ResponseEntity.ok(reporteService.obtenerMargenVentas(inicio, fin, TenantContext.getCurrentSede()));
     }
 
-    // CORRECCIÓN: Inyecta la sede desde el contexto
     @GetMapping("/excel")
     public ResponseEntity<byte[]> descargarExcel(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,

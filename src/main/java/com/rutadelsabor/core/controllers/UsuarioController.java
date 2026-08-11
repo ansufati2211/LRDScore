@@ -46,7 +46,6 @@ public class UsuarioController {
         return ResponseEntity.ok(usuarioService.actualizarUsuario(id, dto));
     }
 
-    // 🔥 FIX: Añadimos el @PathVariable
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> desactivarUsuario(@PathVariable Long id) {
@@ -54,7 +53,6 @@ public class UsuarioController {
         return ResponseEntity.ok("Usuario inhabilitado exitosamente.");
     }
 
-    // 🔥 FIX: Añadimos el @PathVariable
     @PutMapping("/{id}/activar")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> activarUsuario(@PathVariable Long id) {
@@ -62,7 +60,6 @@ public class UsuarioController {
         return ResponseEntity.ok("Usuario activado exitosamente.");
     }
 
-    // 🔥 FIX: Añadimos el @PathVariable y leemos correctamente el JSON del frontend
     @PutMapping("/{id}/reset-password")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<String> resetearPassword(@PathVariable Long id, @RequestBody Map<String, String> payload) {

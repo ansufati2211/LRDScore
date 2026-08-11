@@ -23,7 +23,6 @@ public class SedeController {
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA', 'GERENTE_SEDE')")
     public ResponseEntity<List<Sede>> listarSedesPorEmpresa() {
         Long empresaId = TenantContext.getCurrentTenant();
-        // Devolvemos tanto activas como inactivas para el panel de administración
         return ResponseEntity.ok(sedeRepository.findAll().stream()
                 .filter(s -> s.getEmpresaId().equals(empresaId))
                 .toList());

@@ -396,6 +396,12 @@ public class InventarioServiceImpl implements IInventarioService {
 
         Map<Long, BigDecimal> totalPorInsumo = calcularTotalPorInsumo(detalles);
         Map<Long, InsumoSede> insumosPorId = cargarInventarioSede(totalPorInsumo, sedeIdDelPedido);
+        
+        List<InsumoFaltanteDTO> faltantes = validarDisponibilidadReserva(totalPorInsumo, insumosPorId);
+        if (!faltantes.isEmpty()) {
+            throw new StockInsuficienteException(faltantes);
+        }
+
         Map<Long, BigDecimal> costoUnitarioPorDetalle = calcularCostoUnitarioPorDetalle(detalles, insumosPorId);
         
         Usuario operador = detalles.get(0).getPedido().getMozo();
@@ -430,9 +436,17 @@ public class InventarioServiceImpl implements IInventarioService {
     private Map<Long, BigDecimal> calcularTotalPorInsumo(List<PedidoDetalle> detalles) {
         Map<Long, BigDecimal> total = new LinkedHashMap<>();
         for (PedidoDetalle d : detalles) {
-            List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(d.getProducto().getId());
             BigDecimal factor = new BigDecimal(d.getCantidad());
-            for (RecetaDetalle rd : receta) total.merge(rd.getInsumo().getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
+            
+            if (!Boolean.TRUE.equals(d.getProducto().getEsPreparado())) {
+                List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(d.getProducto().getId());
+                if (!receta.isEmpty()) {
+                    for (RecetaDetalle rd : receta) total.merge(rd.getInsumo().getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
+                }
+            } else {
+                List<RecetaDetalle> receta = recetaDetalleRepository.findByProductoId(d.getProducto().getId());
+                for (RecetaDetalle rd : receta) total.merge(rd.getInsumo().getId(), rd.getCantidadRequerida().multiply(factor), BigDecimal::add);
+            }
         }
         return total;
     }
@@ -492,14 +506,15 @@ public class InventarioServiceImpl implements IInventarioService {
             
             if (ant.compareTo(cant) < 0) {
                 reqRev = true;
-                is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
-            } else {
-                BigDecimal post = ant.subtract(cant);
-                is.setStockActual(post);
-                is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
-                BigDecimal costoUnit = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
-                registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "CONSUMO_PRODUCCION", cant, ant, post, costoUnit, operador, "Consumo pedido #" + pedidoId, pedidoId));
             }
+            
+            BigDecimal post = ant.subtract(cant);
+            is.setStockActual(post);
+            is.setStockReservado(stockRes.subtract(cant).max(BigDecimal.ZERO));
+            
+            BigDecimal costoUnit = is.getCostoUnitario() != null ? is.getCostoUnitario() : BigDecimal.ZERO;
+            registrarMovimientoKardex(new DatosKardex(is.getSedeId(), is.getInsumo(), "CONSUMO_PRODUCCION", cant, ant, post, costoUnit, operador, "Consumo directo/preparación pedido #" + pedidoId, pedidoId));
+            
             insumoSedeRepository.save(is);
         }
         return reqRev;

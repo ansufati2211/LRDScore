@@ -17,9 +17,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.List;
 
-// R0-1: acceso = (rol permite) ∩ (plan incluye módulo) ∩ (suscripción ACTIVA)
-// R0-2: este chequeo es independiente de @PreAuthorize — ambos deben pasar.
-// R0-4: evalúa @RequiereModulo leyendo el plan del tenant desde TenantContext.
 @Component
 public class ModuloInterceptor implements HandlerInterceptor {
 
@@ -30,7 +27,7 @@ public class ModuloInterceptor implements HandlerInterceptor {
     }
 
     @Override
-    @SuppressWarnings("java:S3516") // Se suprime porque la interfaz exige devolver boolean, y en Spring lanzar excepciones para denegar el paso es la práctica estándar.
+    @SuppressWarnings("java:S3516") 
     public boolean preHandle(HttpServletRequest request,
                              HttpServletResponse response,
                              Object handler) {
@@ -65,19 +62,17 @@ public class ModuloInterceptor implements HandlerInterceptor {
 
         if (estado == EstadoSuscripcion.ACTIVA) {
             verificarModuloEnPlan(suscripcion, modulo);
-            return true; // <-- Devuelve true después de la validación void
+            return true; 
         }
 
         if (estado == EstadoSuscripcion.VENCIDA) {
             verificarVencida(request, modulo);
-            return true; // <-- Devuelve true después de la validación void
+            return true; 
         }
 
-        // SUSPENDIDA u otro estado desconocido
         throw new ModuloNoHabilitadoException(modulo);
     }
 
-    // Verifica que el plan activo incluya el módulo requerido (Refactorizado a void)
     private void verificarModuloEnPlan(Suscripcion suscripcion, Modulo modulo) {
         boolean habilitado = suscripcion.getPlan().getModulos().stream()
                 .anyMatch(pm -> pm.getCodigoModulo() == modulo);
@@ -87,7 +82,6 @@ public class ModuloInterceptor implements HandlerInterceptor {
         }
     }
 
-    // E0-1: VENCIDA → core=solo lectura, premium=bloqueado (Refactorizado a void)
     private void verificarVencida(HttpServletRequest request, Modulo modulo) {
         if (!modulo.esCore()) {
             throw new ModuloNoHabilitadoException(modulo);

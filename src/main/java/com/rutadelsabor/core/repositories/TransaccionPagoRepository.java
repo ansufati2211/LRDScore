@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 
 public interface TransaccionPagoRepository extends JpaRepository<TransaccionPago, Long> {
 
-    // Suma solo los pagos en EFECTIVO de una sesión — dinero físico que entra a la caja
     @Query("SELECT COALESCE(SUM(t.monto), 0) FROM TransaccionPago t WHERE t.sesionCaja.id = :sesionId AND t.metodoPago = :metodo")
     BigDecimal sumarPorSesionYMetodo(@Param("sesionId") Long sesionId, @Param("metodo") MetodoPago metodo);
 }

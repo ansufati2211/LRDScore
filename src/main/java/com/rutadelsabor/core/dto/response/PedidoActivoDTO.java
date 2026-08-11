@@ -1,4 +1,4 @@
-// src/main/java/com/rutadelsabor/core/dto/response/PedidoActivoDTO.java
+
 package com.rutadelsabor.core.dto.response;
 
 import lombok.Getter;

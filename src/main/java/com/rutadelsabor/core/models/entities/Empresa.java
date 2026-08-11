@@ -32,7 +32,7 @@ public class Empresa {
 
 @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "suscripcion_vigente_id")
-    @JsonIgnoreProperties({"empresa", "hibernateLazyInitializer", "handler"}) // 🔥 Esto evita el Error 500
+    @JsonIgnoreProperties({"empresa", "hibernateLazyInitializer", "handler"})
     private Suscripcion suscripcionVigente;
 
     @Column(name = "created_at", updatable = false)

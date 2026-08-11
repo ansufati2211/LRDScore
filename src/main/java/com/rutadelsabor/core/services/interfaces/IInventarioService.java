@@ -23,9 +23,8 @@ public interface IInventarioService {
     RecetaDetalle agregarInsumoAReceta(Long productoId, Long insumoId, BigDecimal cantidad, String unidadMedida);
     List<RecetaDetalle> obtenerRecetaPorProducto(Long productoId);
 
-    // 👇 AQUÍ ESTÁN LOS MÉTODOS COMPLETOS PARA REACT 👇
     void actualizarRecetaCompleta(Long productoId, Map<Long, BigDecimal> insumosYCantidades);
-    List<Map<String, Object>> obtenerRecetaFormateada(Long productoId); // <-- ESTA ERA LA LÍNEA QUE FALTABA
+    List<Map<String, Object>> obtenerRecetaFormateada(Long productoId); 
     List<Map<String, Object>> listarInsumosConCosto(Long sedeId);
 
     Insumo crearInsumo(Insumo i);

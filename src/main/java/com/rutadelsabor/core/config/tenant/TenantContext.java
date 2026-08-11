@@ -1,6 +1,6 @@
 package com.rutadelsabor.core.config.tenant;
 
-import com.rutadelsabor.core.exceptions.ReglaNegocioException; // <-- Nueva importación
+import com.rutadelsabor.core.exceptions.ReglaNegocioException; 
 
 public class TenantContext {
 
@@ -30,7 +30,6 @@ public class TenantContext {
         if (sedeSolicitada != null) {
             return sedeSolicitada;
         }
-        // FIX: Cambiamos a ReglaNegocioException para que retorne un HTTP 400 en vez de 500
         throw new ReglaNegocioException("Error de Contexto: Falta especificar la sede. Por favor envía el Header 'X-Sede-ID' (ej. 1) o el parámetro 'sedeId' en el JSON.");
     }
 }

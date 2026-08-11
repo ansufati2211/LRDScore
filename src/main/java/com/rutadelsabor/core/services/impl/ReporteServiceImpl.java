@@ -91,7 +91,6 @@ public class ReporteServiceImpl implements IReporteService {
             detalle = new ArrayList<>(agrupado.values());
         }
 
-        // --- 1. TOP 5 PRODUCTOS MÁS VENDIDOS ---
         List<Object[]> topObj;
         if (sedeId != null) {
             topObj = detalleRepository.findTopProductosVendidosPorSede(
@@ -108,7 +107,6 @@ public class ReporteServiceImpl implements IReporteService {
             return p;
         }).toList();
 
-        // --- 2. VENTAS POR CATEGORÍA ---
         List<Object[]> catObj;
         if (sedeId != null) {
             catObj = detalleRepository.findVentasPorCategoriaSede(

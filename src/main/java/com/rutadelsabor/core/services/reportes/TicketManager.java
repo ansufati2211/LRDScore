@@ -24,7 +24,6 @@ public class TicketManager {
         StringBuilder ticket = new StringBuilder();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-        // Obtenemos los datos reales de la sede donde se emitió el pedido
         Sede sede = sedeRepository.findById(pedido.getSedeId())
                 .orElseThrow(() -> new IllegalArgumentException("Sede no encontrada para el ticket"));
 

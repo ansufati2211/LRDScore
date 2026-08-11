@@ -16,7 +16,6 @@ public interface InsumoSedeRepository extends JpaRepository<InsumoSede, InsumoSe
     @Query("SELECT isede FROM InsumoSede isede JOIN FETCH isede.insumo i WHERE isede.sedeId = :sedeId AND isede.stockActual <= isede.stockMinimo AND i.estadoRegistro = true ORDER BY i.nombre")
     List<InsumoSede> findInsumosConStockBajoPorSede(@Param("sedeId") Long sedeId);
 
-    // FASE 4: Método global sin filtro de sede para ADMIN_EMPRESA
     @Query("SELECT isede FROM InsumoSede isede JOIN FETCH isede.insumo i WHERE isede.stockActual <= isede.stockMinimo AND i.estadoRegistro = true ORDER BY i.nombre")
     List<InsumoSede> findInsumosConStockBajo();
 }

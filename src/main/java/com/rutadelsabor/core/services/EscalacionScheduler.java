@@ -27,8 +27,6 @@ public class EscalacionScheduler {
     @Scheduled(fixedRate = 60000)
     @Transactional(readOnly = true)
     public void alertarPedidosDemorados() {
-        // 🔥 CORRECCIÓN: Usamos la hora del sistema (America/Lima) en lugar de UTC
-        // para que coincida exactamente con el created_at de la base de datos.
         LocalDateTime limiteTolerancia = LocalDateTime.now(ZoneId.systemDefault()).minusMinutes(20);
 
         List<Pedido> demorados = pedidoRepository.findByEstadoActualAndCreatedAtBefore(
@@ -48,7 +46,6 @@ public class EscalacionScheduler {
                     "mensaje", "¡Alerta! Pedido superó el tiempo máximo de preparación."
             );
 
-            // FASE 7: Emite la alarma EXCLUSIVAMENTE a la cocina y gerente de ese local específico
             sseEmitterManager.publicarPorRolYSede(empresaId, "ROLE_COCINA", sedeId, "ALERTA_DEMORA", payload);
             sseEmitterManager.publicarPorRolYSede(empresaId, "ROLE_GERENTE_SEDE", sedeId, "ALERTA_DEMORA", payload);
         }

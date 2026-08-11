@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 public class AjusteInventarioRequestDTO {
     private Long insumoId;
     private BigDecimal cantidad;
-    private Boolean esPositivo; // true = sobra stock, false = falta stock
+    private Boolean esPositivo; 
     private String motivo;
     private Long sedeId;
 }

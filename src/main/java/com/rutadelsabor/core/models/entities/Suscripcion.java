@@ -10,7 +10,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
-// No extiende BaseTenantEntity: existe al nivel de empresa, no es dato operacional del tenant.
 @Getter
 @Setter
 @Entity
@@ -21,13 +20,11 @@ public class Suscripcion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 🔥 FIX: Corta el bucle infinito hacia Empresa
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "empresa_id", nullable = false)
     private Empresa empresa;
 
-    // EAGER: el interceptor necesita plan + modulos inmediatamente
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "plan_id", nullable = false)
     private Plan plan;

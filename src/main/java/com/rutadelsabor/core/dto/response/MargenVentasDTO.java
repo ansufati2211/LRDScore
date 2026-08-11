@@ -13,7 +13,6 @@ public class MargenVentasDTO {
     private BigDecimal costoVentas;
     private BigDecimal utilidadBruta;
     private BigDecimal margenBrutoPct;
-    // E5-2: costo de ítems cancelados que ya habían consumido inventario
     private BigDecimal costoMerma;
     private List<MargenProductoDTO> desglosePorProducto;
     private List<MargenCategoriaDTO> desglosePorCategoria;
@@ -27,7 +26,6 @@ public class MargenVentasDTO {
         private BigDecimal costoVentas;
         private BigDecimal utilidadBruta;
         private BigDecimal margenPct;
-        // R5-4: true cuando el costo proviene de costo_referencial (producto sin receta)
         private Boolean esEstimado;
     }
 

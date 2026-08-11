@@ -11,8 +11,6 @@ public class DashboardVentasDTO {
     private BigDecimal ingresosTotalesMensuales;
     private Long pedidosTotalesMensuales;
     private List<DetalleDiaDTO> detalleDiario;
-    
-    // Listas inyectadas para los nuevos gráficos
     private List<ProductoTopDTO> productosMasVendidos;
     private List<CategoriaTopDTO> ventasPorCategoria;
 

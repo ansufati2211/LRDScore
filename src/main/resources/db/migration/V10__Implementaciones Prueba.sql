@@ -39,9 +39,7 @@ SELECT
     p.identificador_mesa_referencia                         AS mesa,
     p.estado_actual                                         AS estado_pedido,
     p.notas_generales,
-    -- 🔥 FIX 1: Le decimos explícitamente que la hora almacenada es de Perú
     (p.created_at AT TIME ZONE 'America/Lima')::TIMESTAMPTZ AS hora_ingreso,
-    -- 🔥 FIX 2: Calculamos la diferencia comparando peras con peras (Tiempos con Zona Horaria)
     EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - (p.created_at AT TIME ZONE 'America/Lima'))) / 60.0 AS minutos_transcurridos,
     pd.cantidad,
     pd.notas_preparacion,

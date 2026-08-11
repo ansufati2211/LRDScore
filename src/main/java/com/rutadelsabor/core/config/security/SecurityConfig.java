@@ -16,7 +16,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
-// Esto habilita el uso de @PreAuthorize en tus controladores
 @EnableMethodSecurity 
 public class SecurityConfig {
 
@@ -29,18 +28,18 @@ public class SecurityConfig {
     }
 
     @Bean
-    @SuppressWarnings("java:S4502") // Se suprime la regla CSRF porque la API es Stateless y usa JWT (seguro)
+    @SuppressWarnings("java:S4502") 
     public SecurityFilterChain filterChain(HttpSecurity http) {
         try {
             http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .csrf(AbstractHttpConfigurer::disable) // <-- Sintaxis más limpia para Spring Security 6
+                .csrf(AbstractHttpConfigurer::disable) 
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/api/auth/**").permitAll() // Rutas públicas (Login)
-                    .requestMatchers("/api/kds/eventos").permitAll() // SSE para la cocina/mozo
-                    .requestMatchers("/api/dialogflow/**").permitAll() // Integración de IA
-                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger
+                    .requestMatchers("/api/auth/**").permitAll() 
+                    .requestMatchers("/api/kds/eventos").permitAll() 
+                    .requestMatchers("/api/dialogflow/**").permitAll() 
+                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() 
                     .anyRequest().authenticated()
                 );
 
@@ -48,7 +47,6 @@ public class SecurityConfig {
 
             return http.build();
         } catch (Exception e) {
-            // Reemplaza Exception genérica por una específica resolviendo java:S112 y java:S1130
             throw new IllegalStateException("Error al construir la configuración del SecurityFilterChain", e);
         }
     }
@@ -58,7 +56,6 @@ public class SecurityConfig {
         try {
             return authConfig.getAuthenticationManager();
         } catch (Exception e) {
-            // Reemplaza Exception genérica por una específica resolviendo java:S112
             throw new IllegalStateException("Error al obtener el AuthenticationManager", e);
         }
     }

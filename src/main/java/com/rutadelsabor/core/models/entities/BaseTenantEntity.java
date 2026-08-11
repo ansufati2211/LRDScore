@@ -6,7 +6,7 @@ import lombok.Setter;
 import org.hibernate.annotations.TenantId;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId; // 🔥 FIX: Importamos ZoneId
+import java.time.ZoneId; 
 
 @Getter
 @Setter
@@ -17,12 +17,10 @@ public abstract class BaseTenantEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // MAGIA MULTI-TENANT: Hibernate filtrará automáticamente por este campo.
     @TenantId
     @Column(name = "empresa_id", nullable = false)
     private Long empresaId;
 
-    // Eliminamos @Temporal y cambiamos a LocalDateTime (Resuelve java:S1874)
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -31,7 +29,6 @@ public abstract class BaseTenantEntity {
 
     @PrePersist
     protected void onCreate() {
-        // 🔥 FIX: Usamos el reloj del sistema (que ya forzaste a America/Lima)
         LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
         this.createdAt = now;
         this.updatedAt = now;
@@ -39,7 +36,6 @@ public abstract class BaseTenantEntity {
 
     @PreUpdate
     protected void onUpdate() {
-        // 🔥 FIX: Usamos el reloj del sistema
         this.updatedAt = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

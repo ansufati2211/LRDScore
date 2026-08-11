@@ -7,5 +7,5 @@ import java.math.BigDecimal;
 public class SesionCajaRequestDTO {
     private BigDecimal montoInicial;
     private BigDecimal montoFinalDeclarado;
-    private Long sedeId; // <-- FIX: Propiedad añadida para que el controlador lo detecte
+    private Long sedeId;
 }

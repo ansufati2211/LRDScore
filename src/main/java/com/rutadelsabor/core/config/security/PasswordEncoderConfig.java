@@ -10,7 +10,6 @@ public class PasswordEncoderConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        // Fuerza de 10 es el estándar actual. Seguro pero no ralentiza el login.
         return new BCryptPasswordEncoder(10);
     }
 }

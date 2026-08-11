@@ -43,7 +43,6 @@ public class PedidoDetalle extends BaseTenantEntity {
     @Column(name = "motivo_cancelacion", columnDefinition = "TEXT")
     private String motivoCancelacion;
 
-    // R5-1: snapshot del costo promedio ponderado al consumir (EN_PREPARACION). No se recalcula.
     @Column(name = "costo_unitario_consumido", precision = 12, scale = 4)
     private BigDecimal costoUnitarioConsumido;
 }

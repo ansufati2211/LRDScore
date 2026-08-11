@@ -11,12 +11,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    // 1. Lo marcamos como final para mayor seguridad
     private final IAuthService authService;
 
-    // 2. Inyección por Constructor (Resuelve java:S6813)
-    // Ya no hace falta poner @Autowired, Spring Boot lo hace automáticamente 
-    // cuando la clase tiene un solo constructor.
     public AuthController(IAuthService authService) {
         this.authService = authService;
     }

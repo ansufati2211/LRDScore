@@ -102,7 +102,6 @@ public class CajaServiceImpl implements ICajaService {
         return cajaRepository.findByCajeroIdOrderByFechaAperturaDesc(cajeroId);
     }
 
-    // 🔥 FIX: Nueva función que cruza las transacciones para el Arqueo Financiero
     @Override
     @Transactional(readOnly = true)
     public Map<String, BigDecimal> obtenerResumenCajaActiva(Long cajeroId, Long sedeId) {

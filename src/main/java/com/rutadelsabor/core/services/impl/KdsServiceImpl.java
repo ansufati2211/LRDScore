@@ -179,7 +179,6 @@ public class KdsServiceImpl implements IKdsService {
                         "unidad", rd.getUnidadMedida()
                 )).toList();
         
-        // 🔥 FIX: Usamos HashMap en lugar de Map.of() para soportar valores nulos (imagenUrl puede ser null)
         Map<String, Object> respuesta = new HashMap<>();
         respuesta.put("producto", p.getNombre());
         respuesta.put("imagenUrl", p.getImagenUrl()); 

@@ -19,6 +19,5 @@ public class TenantInterceptor implements HandlerInterceptor {
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        // JwtRequestFilter ya limpia el TenantContext, se gestiona ahí.
     }
 }

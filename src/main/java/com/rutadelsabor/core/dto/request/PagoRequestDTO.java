@@ -8,5 +8,5 @@ import java.util.List;
 @Setter
 public class PagoRequestDTO {
     private Long sesionCajaId;
-    private List<PagoItemDTO> pagos; // Permite pagar 10.00 en Efectivo y 2.50 con Yape
+    private List<PagoItemDTO> pagos;
 }

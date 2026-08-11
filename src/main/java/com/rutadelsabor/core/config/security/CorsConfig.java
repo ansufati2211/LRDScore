@@ -41,10 +41,8 @@ public class CorsConfig implements WebMvcConfigurer {
         
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         
-        // SOLUCIÓN NUCLEAR CORS: Permitir TODOS los headers entrantes (*)
         config.setAllowedHeaders(Collections.singletonList("*"));
         
-        // También exponemos los headers por si el frontend necesita leerlos
         config.setExposedHeaders(Arrays.asList("Authorization", "X-Sede-ID"));
         
         config.setAllowCredentials(true);

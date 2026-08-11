@@ -17,12 +17,11 @@ public class SseEmitterManager {
 
     private static final Logger log = LoggerFactory.getLogger(SseEmitterManager.class);
 
-    // FASE 7: Indexado por (empresaId, usuarioId)
     private final ConcurrentHashMap<Long, ConcurrentHashMap<Long, UserSseSession>> tenants = new ConcurrentHashMap<>();
 
     static final class UserSseSession {
         final String rol;
-        final Long sedeId; // <-- FASE 7: Aislamiento por local físico
+        final Long sedeId; 
         final CopyOnWriteArrayList<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
         UserSseSession(String rol, Long sedeId) {
@@ -32,7 +31,7 @@ public class SseEmitterManager {
     }
 
     public SseEmitter suscribir(Long empresaId, Long usuarioId, String rol, Long sedeId) {
-        SseEmitter emitter = new SseEmitter(120000L); // 2 minutos de timeout
+        SseEmitter emitter = new SseEmitter(120000L);
         
         ConcurrentHashMap<Long, UserSseSession> empresa = tenants.computeIfAbsent(empresaId, k -> new ConcurrentHashMap<>());
         UserSseSession session = empresa.computeIfAbsent(usuarioId, k -> new UserSseSession(rol, sedeId));
@@ -68,7 +67,6 @@ public class SseEmitterManager {
         emitters.removeAll(muertos);
     }
 
-    // Evento Global a la Empresa (Ej: Reset de Stock)
     public void publicarTenant(Long empresaId, String evento, Object datos) {
         ConcurrentHashMap<Long, UserSseSession> empresa = tenants.get(empresaId);
         if (empresa == null) return;
@@ -77,19 +75,16 @@ public class SseEmitterManager {
         }
     }
 
-    // FASE 7: Evento Aislado a una Sede Específica (Ej: Nuevo Pedido en Ica)
     public void publicarTenantYSede(Long empresaId, Long sedeId, String evento, Object datos) {
         ConcurrentHashMap<Long, UserSseSession> empresa = tenants.get(empresaId);
         if (empresa == null) return;
         for (UserSseSession session : empresa.values()) {
-            // Si la sesión no tiene sede (es el ADMIN global) o coincide la sede
             if (session.sedeId == null || session.sedeId.equals(sedeId)) {
                 enviar(session.emitters, evento, datos);
             }
         }
     }
 
-    // FASE 7: Evento Aislado por Rol y Sede (Ej: Alerta Demora solo a COCINA de Ica)
     public void publicarPorRolYSede(Long empresaId, String rol, Long sedeId, String evento, Object datos) {
         ConcurrentHashMap<Long, UserSseSession> empresa = tenants.get(empresaId);
         if (empresa == null) return;

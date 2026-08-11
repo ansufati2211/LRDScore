@@ -26,7 +26,6 @@ public class JwtProvider {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    // Firma actualizada para inyectar sedeId
     public String generateToken(Authentication authentication, Long empresaId, Long usuarioId, Long sedeId) {
         UserDetailsImpl userPrincipal = obtenerPrincipalSeguro(authentication);
         String rol = userPrincipal.getAuthorities().iterator().next().getAuthority();
@@ -40,7 +39,7 @@ public class JwtProvider {
                 .claim("rol", rol)
                 .claim("empresaId", empresaId)
                 .claim("usuarioId", usuarioId)
-                .claim("sedeId", sedeId) // INYECTADO
+                .claim("sedeId", sedeId) 
             .issuedAt(java.util.Date.from(now)) 
             .expiration(java.util.Date.from(expiration)) 
                 .signWith(getSigningKey())
@@ -50,7 +49,6 @@ public class JwtProvider {
     public String extractUsername(String token) { return extractClaim(token, Claims::getSubject); }
     public Long extractEmpresaId(String token) { return extractClaim(token, claims -> claims.get("empresaId", Long.class)); }
     
-    // Extractor del SedeId
     public Long extractSedeId(String token) { return extractClaim(token, claims -> claims.get("sedeId", Long.class)); }
 
     public boolean validateToken(String token, UserDetails userDetails) {

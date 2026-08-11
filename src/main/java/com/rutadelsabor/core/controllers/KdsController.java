@@ -15,7 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map; // 🔥 Importación necesaria para el JSON de la receta
+import java.util.Map; 
 
 @RestController
 @RequestMapping("/api/kds")
@@ -93,7 +93,6 @@ public class KdsController {
         }
     }
 
-    // 🔥 FIX: Añadimos el endpoint faltante para consultar la receta y sus ingredientes
     @GetMapping("/recetas/producto/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_COCINA', 'ROLE_MOZO')")
     public ResponseEntity<Map<String, Object>> obtenerRecetaKds(@PathVariable("id") Long id) {

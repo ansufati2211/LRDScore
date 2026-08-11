@@ -38,8 +38,6 @@ public class Pedido extends BaseSedeEntity {
     @Column(name = "estado_actual", nullable = false, length = 50)
     private EstadoPedido estadoActual;
 
-    // Generado por el trigger fn_generar_numero_orden (BEFORE INSERT).
-    // @Generated(INSERT): Hibernate no lo escribe y lo re-lee tras el insert.
     @Generated(event = EventType.INSERT)
     @Column(name = "numero_orden", insertable = false, updatable = false)
     private Integer numeroOrden;

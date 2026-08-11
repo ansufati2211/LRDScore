@@ -32,7 +32,7 @@ public class PedidoController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO', 'ROLE_CAJERO')")
     public ResponseEntity<Pedido> crearPedido(@RequestBody PedidoRequestDTO dto, Authentication auth) {
         Usuario mozo = usuarioRepository.findByCorreo(auth.getName())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Mozo no encontrado"));
@@ -40,7 +40,7 @@ public class PedidoController {
     }
 
     @PutMapping("/{id}/confirmar")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO', 'ROLE_CAJERO')")
     public ResponseEntity<String> confirmarPedido(@PathVariable Long id) {
         pedidoService.confirmarPedido(id);
         return ResponseEntity.ok("Pedido confirmado y enviado a cocina.");
@@ -101,7 +101,6 @@ public class PedidoController {
         return ResponseEntity.ok().build();
     }
 
-    // 🔥 FIX: Añadimos charset UTF-8 en la firma para que soporte tildes y eñes
     @GetMapping(value = "/{id}/ticket", produces = "text/plain; charset=UTF-8")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO', 'ROLE_MOZO')")
     public ResponseEntity<String> imprimirTicket(@PathVariable Long id) {
@@ -111,7 +110,7 @@ public class PedidoController {
     }
 
     @PostMapping("/{id}/items")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_MOZO', 'ROLE_CAJERO')")
     public ResponseEntity<String> agregarItems(@PathVariable Long id, @RequestBody AgregarItemsRequestDTO dto) {
         pedidoService.agregarItemsAPedido(id, dto);
         return ResponseEntity.ok("Ítems agregados y enviados a cocina.");

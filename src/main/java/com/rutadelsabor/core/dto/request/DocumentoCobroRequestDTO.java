@@ -9,7 +9,7 @@ import java.util.List;
 @Getter
 @Setter
 public class DocumentoCobroRequestDTO {
-    private String tipo;          // "ITEMS" | "MONTO"
-    private List<Long> detalleIds; // requerido para tipo ITEMS
-    private BigDecimal monto;      // requerido para tipo MONTO
+    private String tipo;  
+    private List<Long> detalleIds;
+    private BigDecimal monto;     
 }

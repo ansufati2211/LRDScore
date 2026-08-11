@@ -27,8 +27,6 @@ public class ExcelReportManager {
             
             Sheet sheet = workbook.createSheet("Reporte Consolidado");
 
-            // 1. ESTILOS PREMIUM
-            // Estilo para el Título Principal
             CellStyle titleStyle = workbook.createCellStyle();
             Font titleFont = workbook.createFont();
             titleFont.setBold(true);
@@ -37,7 +35,6 @@ public class ExcelReportManager {
             titleStyle.setFont(titleFont);
             titleStyle.setAlignment(HorizontalAlignment.CENTER);
 
-            // Estilo para la Cabecera de la Tabla
             CellStyle headerStyle = workbook.createCellStyle();
             headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -52,7 +49,6 @@ public class ExcelReportManager {
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
 
-            // Estilo para Celdas de Dinero (Formato Moneda)
             CellStyle currencyStyle = workbook.createCellStyle();
             DataFormat format = workbook.createDataFormat();
             currencyStyle.setDataFormat(format.getFormat("\"S/ \"#,##0.00"));
@@ -61,7 +57,6 @@ public class ExcelReportManager {
             currencyStyle.setBorderLeft(BorderStyle.THIN);
             currencyStyle.setBorderRight(BorderStyle.THIN);
 
-            // Estilo normal con bordes
             CellStyle normalStyle = workbook.createCellStyle();
             normalStyle.setBorderBottom(BorderStyle.THIN);
             normalStyle.setBorderTop(BorderStyle.THIN);
@@ -69,7 +64,6 @@ public class ExcelReportManager {
             normalStyle.setBorderRight(BorderStyle.THIN);
             normalStyle.setAlignment(HorizontalAlignment.CENTER);
 
-            // 2. DATOS DE LA SEDE
             Long sedeId = TenantContext.getCurrentSede();
             String nombreLocal = "Todas las Sedes (Consolidado)";
             if (sedeId != null) {
@@ -78,17 +72,13 @@ public class ExcelReportManager {
                 nombreLocal = "Sucursal: " + sede.getNombre();
             }
 
-            // 3. CONSTRUCCIÓN DEL EXCEL
-            // Título
             Row titleRow = sheet.createRow(0);
             Cell titleCell = titleRow.createCell(0);
             titleCell.setCellValue("REPORTE DE VENTAS - " + nombreLocal.toUpperCase());
             titleCell.setCellStyle(titleStyle);
-            
-            // Fila vacía de separación
+
             sheet.createRow(1);
 
-            // Cabeceras
             Row headerRow = sheet.createRow(2);
             String[] columnas = {"Fecha de Operación", "Tickets Emitidos", "Ingresos Totales"};
             for (int i = 0; i < columnas.length; i++) {
@@ -97,7 +87,6 @@ public class ExcelReportManager {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Datos
             int rowIdx = 3;
             double sumaIngresos = 0;
             int sumaPedidos = 0;
@@ -121,7 +110,6 @@ public class ExcelReportManager {
                 sumaPedidos += venta.getCantidadPedidos();
             }
 
-            // Fila de Totales
             Row totalRow = sheet.createRow(rowIdx);
             Cell totalLabel = totalRow.createCell(0);
             totalLabel.setCellValue("TOTAL GLOBAL:");
@@ -133,9 +121,8 @@ public class ExcelReportManager {
 
             Cell totalIngs = totalRow.createCell(2);
             totalIngs.setCellValue(sumaIngresos);
-            totalIngs.setCellStyle(headerStyle); // Lo pintamos azul para que resalte
+            totalIngs.setCellStyle(headerStyle); 
 
-            // 4. AUTO-AJUSTE DE COLUMNAS
             for (int i = 0; i < columnas.length; i++) {
                 sheet.autoSizeColumn(i);
             }

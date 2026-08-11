@@ -45,7 +45,6 @@ public class CajaController {
         return ResponseEntity.ok(cajaService.listarHistorialPorCajero(cajero.getUsuarioId(), sedeId));
     }
 
-    // 🔥 FIX: Nuevo endpoint para consultar los montos por método de pago
     @GetMapping("/activa/resumen")
     public ResponseEntity<Map<String, BigDecimal>> obtenerResumenCajaActiva(@RequestParam(required = false) Long sedeId, Authentication auth) {
         UserDetailsImpl cajero = (UserDetailsImpl) auth.getPrincipal();

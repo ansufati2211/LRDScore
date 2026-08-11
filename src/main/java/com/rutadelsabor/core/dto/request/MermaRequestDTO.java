@@ -8,6 +8,6 @@ import java.math.BigDecimal;
 public class MermaRequestDTO {
     private Long insumoId;
     private BigDecimal cantidad;
-    private String motivo; // Obligatorio
+    private String motivo; 
     private Long sedeId;
 }

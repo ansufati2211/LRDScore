@@ -6,17 +6,15 @@ import java.math.BigDecimal;
 @Data
 public class PorcionDisponibleDTO {
     private Long productoId;
-    private String nombreProducto; // FIX: añadido
+    private String nombreProducto; 
     private BigDecimal porcionesDisponibles;
-    private String nivelAdvertencia; // FIX: añadido
-    private String estadoDisponibilidad; // 🔥 NUEVO: Para saber si está pausado en React
+    private String nivelAdvertencia;
+    private String estadoDisponibilidad; 
 
-    // FIX: Setter sobrecargado para aceptar Integer y mantener compatibilidad con el servicio
     public void setPorcionesDisponibles(Integer porciones) {
         this.porcionesDisponibles = new BigDecimal(porciones);
     }
     
-    // Método original para soportar inyección de BigDecimal si fuera necesario
     public void setPorcionesDisponibles(BigDecimal porcionesDisponibles) {
         this.porcionesDisponibles = porcionesDisponibles;
     }

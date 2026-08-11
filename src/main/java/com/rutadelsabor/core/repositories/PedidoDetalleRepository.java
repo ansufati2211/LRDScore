@@ -46,9 +46,6 @@ public interface PedidoDetalleRepository extends JpaRepository<PedidoDetalle, Lo
             @Param("fin") LocalDateTime fin,
             @Param("estadoCancelado") EstadoItem estadoCancelado);
 
-    // ==========================================
-    // TOP PRODUCTOS MÁS VENDIDOS
-    // ==========================================
     @Query("SELECT d.producto.nombre, SUM(d.cantidad) FROM PedidoDetalle d JOIN d.pedido ped " +
            "WHERE ped.sedeId = :sedeId AND ped.estadoActual IN ('PAGADO', 'ENTREGADO') " +
            "AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +
@@ -67,9 +64,6 @@ public interface PedidoDetalleRepository extends JpaRepository<PedidoDetalle, Lo
             @Param("empresaId") Long empresaId, @Param("inicio") LocalDateTime inicio, 
             @Param("fin") LocalDateTime fin, org.springframework.data.domain.Pageable pageable);
 
-    // ==========================================
-    // VENTAS POR CATEGORÍA
-    // ==========================================
     @Query("SELECT c.nombre, SUM(d.subtotal) FROM PedidoDetalle d JOIN d.pedido ped JOIN d.producto p JOIN p.categoria c " +
            "WHERE ped.sedeId = :sedeId AND ped.estadoActual IN ('PAGADO', 'ENTREGADO') " +
            "AND ped.createdAt >= :inicio AND ped.createdAt <= :fin " +

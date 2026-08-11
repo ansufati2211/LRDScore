@@ -13,7 +13,6 @@ public class DocumentoVentaResponseDTO {
     private String tipo;
     private String serie;
     private Integer correlativo;
-    // Formato SUNAT: "NV01-0000001" / "B001-0000001" / "F001-0000001"
     private String numeroDocumento;
 
     private String tipoDocumentoReceptor;

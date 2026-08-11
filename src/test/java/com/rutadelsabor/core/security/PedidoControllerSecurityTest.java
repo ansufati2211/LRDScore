@@ -56,7 +56,6 @@ class PedidoControllerSecurityTest {
                 .thenReturn(true);
         when(usuarioRepository.findByCorreo(anyString())).thenReturn(Optional.empty());
         
-        // FIX: Se agrega un any() extra a los Mocks para que calcen con la nueva firma IPedidoService
         when(pedidoService.listarPedidosActivos(any())).thenReturn(Collections.emptyList());
         when(pedidoService.listarHistorial(any(), any(), any())).thenReturn(Collections.emptyList());
     }

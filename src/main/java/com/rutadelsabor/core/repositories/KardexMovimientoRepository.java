@@ -9,9 +9,7 @@ public interface KardexMovimientoRepository extends JpaRepository<KardexMovimien
 
     List<KardexMovimiento> findByPedidoIdAndTipoMovimiento(Long pedidoId, String tipoMovimiento);
 
-    // Búsqueda para un local específico
     List<KardexMovimiento> findBySedeIdAndInsumoIdOrderByCreatedAtDesc(Long sedeId, Long insumoId);
 
-    // FASE 4: Búsqueda global para ADMIN_EMPRESA
     List<KardexMovimiento> findByInsumoIdOrderByCreatedAtDesc(Long insumoId);
 }

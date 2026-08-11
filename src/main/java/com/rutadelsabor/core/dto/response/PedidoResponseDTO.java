@@ -21,7 +21,7 @@ public class PedidoResponseDTO {
     @Setter
     public static class DetalleDTO {
         private Long productoId;
-        private String nombreProducto; // Agregamos el nombre para que el Frontend lo pinte directo
+        private String nombreProducto; 
         private Integer cantidad;
         private BigDecimal precioUnitario;
         private BigDecimal subtotal;

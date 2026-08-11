@@ -6,8 +6,6 @@ import lombok.Setter;
 
 import java.util.List;
 
-// R0-3: incluye modulosHabilitados para que el frontend oculte/deshabilite la UI correspondiente.
-// estadoSuscripcion permite al frontend mostrar el banner de aviso cuando es VENCIDA (E0-1).
 @Getter
 @Setter
 @AllArgsConstructor

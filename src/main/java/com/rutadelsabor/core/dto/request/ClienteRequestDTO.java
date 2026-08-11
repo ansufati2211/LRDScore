@@ -7,7 +7,7 @@ import lombok.Setter;
 @Setter
 public class ClienteRequestDTO {
     private String nombreRazonSocial;
-    private String tipoDocumento; // DNI, RUC, CE
+    private String tipoDocumento;
     private String numeroDocumento;
     private String direccion;
     private String correo;

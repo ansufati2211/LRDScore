@@ -7,6 +7,5 @@ import java.time.LocalDate;
 public interface IReporteService {
     DashboardVentasDTO obtenerResumenVentas(LocalDate inicio, LocalDate fin, Long sedeId);
     byte[] exportarVentasExcel(LocalDate inicio, LocalDate fin, Long sedeId);
-    // R5-2: solo disponible si el tenant tiene REPORTES_AVANZADOS habilitado
     MargenVentasDTO obtenerMargenVentas(LocalDate inicio, LocalDate fin, Long sedeId);
 }
