@@ -21,7 +21,7 @@ public class EmpresaController {
     }
 
     @GetMapping("/mi-empresa")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE', 'ROLE_CAJERO')")
     public ResponseEntity<Empresa> obtenerMiEmpresa() {
         Long empresaId = TenantContext.getCurrentTenant();
         Empresa empresa = empresaRepository.findById(empresaId)
