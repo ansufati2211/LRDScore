@@ -1,6 +1,8 @@
 package com.rutadelsabor.core.security;
 
 import com.rutadelsabor.core.config.tenant.TenantContext;
+import com.rutadelsabor.core.models.entities.Empresa;
+import com.rutadelsabor.core.repositories.EmpresaRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -13,6 +15,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
 import java.io.IOException;
 
 @Component
@@ -20,10 +23,12 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
     private final UserDetailsService userDetailsService;
+    private final EmpresaRepository empresaRepository;
 
-    public JwtRequestFilter(JwtProvider jwtProvider, UserDetailsService userDetailsService) {
+    public JwtRequestFilter(JwtProvider jwtProvider, UserDetailsService userDetailsService, EmpresaRepository empresaRepository) {
         this.jwtProvider = jwtProvider;
         this.userDetailsService = userDetailsService;
+        this.empresaRepository = empresaRepository;
     }
 
     @Override
@@ -33,6 +38,19 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         String jwt = extraerJwt(request);
 
         if (jwt != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            
+            try {
+                Long empresaId = jwtProvider.extractEmpresaId(jwt);
+                if (empresaId != null) {
+                    Empresa empresa = empresaRepository.findById(empresaId).orElse(null);
+                    if (empresa != null && Boolean.FALSE.equals(empresa.getEstadoRegistro())) {
+                        response.sendError(HttpServletResponse.SC_FORBIDDEN, "Empresa Suspendida");
+                        return; 
+                    }
+                }
+            } catch (Exception e) {
+            }
+
             autenticarUsuario(jwt, request);
         }
         
