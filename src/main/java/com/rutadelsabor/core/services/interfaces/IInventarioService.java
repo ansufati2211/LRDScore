@@ -45,4 +45,6 @@ public interface IInventarioService {
     boolean convertirReservaAConsumo(Long pedidoId);
     boolean convertirItemsAConsumo(Long pedidoId, List<PedidoDetalle> detalles);
     void liberarReservaDeItems(Long pedidoId, List<PedidoDetalle> detalles);
+
+    void actualizarStockMinimo(Long insumoId, Long sedeId, BigDecimal stockMinimo);
 }

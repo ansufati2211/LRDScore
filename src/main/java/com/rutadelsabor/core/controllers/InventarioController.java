@@ -122,6 +122,15 @@ public class InventarioController {
         return ResponseEntity.ok(inventarioService.listarInsumos());
     }
 
+    @PutMapping("/insumos/{id}/stock-minimo")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
+    public ResponseEntity<String> actualizarStockMinimo(@PathVariable Long id, @RequestBody java.util.Map<String, Object> payload) {
+    Long sedeId = payload.get("sedeId") != null ? Long.valueOf(payload.get("sedeId").toString()) : null;
+    java.math.BigDecimal stockMinimo = new java.math.BigDecimal(payload.get("stockMinimo").toString());
+    inventarioService.actualizarStockMinimo(id, sedeId, stockMinimo);
+    return ResponseEntity.ok("Stock mínimo actualizado");
+    }
+
     @PostMapping("/insumos")
     @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN_EMPRESA', 'ROLE_GERENTE_SEDE')")
     public ResponseEntity<Insumo> crearInsumo(@RequestBody Insumo insumo) {

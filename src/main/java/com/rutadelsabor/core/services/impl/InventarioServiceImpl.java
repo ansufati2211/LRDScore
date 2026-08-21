@@ -526,4 +526,13 @@ public class InventarioServiceImpl implements IInventarioService {
             if (c != null) { d.setCostoUnitarioConsumido(c); detalleRepository.save(d); }
         }
     }
+
+    @Override
+@Transactional
+public void actualizarStockMinimo(Long insumoId, Long sedeId, BigDecimal stockMinimo) {
+    Long sedeEfectiva = TenantContext.resolverSedeEfectiva(sedeId);
+    InsumoSede is = obtenerInventarioFisico(sedeEfectiva, insumoId);
+    is.setStockMinimo(stockMinimo);
+    insumoSedeRepository.save(is);
+}
 }

@@ -1,8 +1,11 @@
 package com.rutadelsabor.core.controllers;
 
 import com.rutadelsabor.core.config.tenant.TenantContext;
+import com.rutadelsabor.core.exceptions.ReglaNegocioException;
 import com.rutadelsabor.core.models.entities.Sede;
+import com.rutadelsabor.core.models.entities.Suscripcion;
 import com.rutadelsabor.core.repositories.SedeRepository;
+import com.rutadelsabor.core.services.interfaces.ISuscripcionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +17,11 @@ import java.util.List;
 public class SedeController {
 
     private final SedeRepository sedeRepository;
+    private final ISuscripcionService suscripcionService;
 
-    public SedeController(SedeRepository sedeRepository) {
+    public SedeController(SedeRepository sedeRepository, ISuscripcionService suscripcionService) {
         this.sedeRepository = sedeRepository;
+        this.suscripcionService = suscripcionService;
     }
 
     @GetMapping
@@ -31,7 +36,20 @@ public class SedeController {
     @PostMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_EMPRESA')")
     public ResponseEntity<Sede> crearSede(@RequestBody Sede sedeRequest) {
-        sedeRequest.setEmpresaId(TenantContext.getCurrentTenant());
+        Long empresaId = TenantContext.getCurrentTenant();
+
+        Suscripcion suscripcion = suscripcionService.obtenerSuscripcionVigente(empresaId)
+                .orElseThrow(() -> new ReglaNegocioException("La empresa no cuenta con una suscripción vigente."));
+
+        if (suscripcion.getPlan().getId() == 1L) {
+            long sedesActuales = sedeRepository.findByEmpresaIdAndEstadoRegistroTrue(empresaId).size();
+            
+            if (sedesActuales >= 1) {
+                throw new ReglaNegocioException("ACCESO DENEGADO: El Plan Básico solo permite tener 1 local. Mejore su plan a Completo para operar con múltiples sedes.");
+            }
+        }
+
+        sedeRequest.setEmpresaId(empresaId);
         sedeRequest.setEstadoRegistro(true);
         return ResponseEntity.ok(sedeRepository.save(sedeRequest));
     }

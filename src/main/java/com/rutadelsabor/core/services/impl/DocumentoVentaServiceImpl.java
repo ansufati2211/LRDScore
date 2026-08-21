@@ -61,10 +61,12 @@ public class DocumentoVentaServiceImpl implements IDocumentoVentaService {
         try { tipo = TipoDocumentoVenta.valueOf(dto.getTipo().toUpperCase()); } 
         catch (IllegalArgumentException e) { throw new ReglaNegocioException("Tipo inválido. Use NOTA_VENTA, BOLETA o FACTURA."); }
 
-        if (tipo != TipoDocumentoVenta.NOTA_VENTA) {
-            List<String> modulos = suscripcionService.obtenerModulosHabilitados(TenantContext.getCurrentTenant());
-            if (!modulos.contains(Modulo.FACTURACION.name())) throw new ModuloNoHabilitadoException(Modulo.FACTURACION);
-        }
+if (tipo == TipoDocumentoVenta.FACTURA) {
+    List<String> modulos = suscripcionService.obtenerModulosHabilitados(TenantContext.getCurrentTenant());
+    if (!modulos.contains(Modulo.FACTURACION.name())) {
+        throw new ModuloNoHabilitadoException(Modulo.FACTURACION);
+    }
+}
 
         if (tipo == TipoDocumentoVenta.FACTURA) validarRuc(dto.getNumeroDocumentoReceptor());
         if (dto.getPedidoId() == null && dto.getDocumentoCobroId() == null) throw new ReglaNegocioException("Indique pedidoId o documentoCobroId.");
