@@ -26,7 +26,6 @@ public class ReservaController {
         this.reservaRepository = reservaRepository;
     }
 
-    // --- NUEVO ENDPOINT QUE ACABAMOS DE AGREGAR ---
     @GetMapping
     @RequiereModulo(Modulo.RESERVAS)
     public ResponseEntity<List<Reserva>> obtenerTodasLasReservas(@RequestParam(required = false) Long sedeId) {
@@ -34,8 +33,7 @@ public class ReservaController {
         List<Reserva> reservas = reservaRepository.findBySedeIdOrderByFechaHoraAsc(sedeEfectiva);
         return ResponseEntity.ok(reservas);
     }
-    // ----------------------------------------------
-
+    
     @GetMapping("/del-dia")
     @RequiereModulo(Modulo.RESERVAS)
     public ResponseEntity<List<Reserva>> obtenerReservasDelDia() {

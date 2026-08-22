@@ -45,7 +45,7 @@ public class ReporteController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
         byte[] excelBytes = reporteService.exportarVentasExcel(inicio, fin, TenantContext.getCurrentSede());
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=reporte_ventas.xlsx")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=Reporte_De_Ventas.xlsx")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(excelBytes);
     }

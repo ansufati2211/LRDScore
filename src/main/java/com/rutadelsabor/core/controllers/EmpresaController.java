@@ -18,7 +18,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate; // 🔥 IMPORTANTE
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -35,7 +35,7 @@ public class EmpresaController {
     private final SuscripcionRepository suscripcionRepository;
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JdbcTemplate jdbcTemplate; // 🔥 INYECTAMOS LA HERRAMIENTA SQL
+    private final JdbcTemplate jdbcTemplate;
 
     public EmpresaController(EmpresaRepository empresaRepository, 
                              PlanRepository planRepository, 
@@ -193,12 +193,10 @@ public class EmpresaController {
     @Transactional
     public ResponseEntity<?> onboardingSaaS(@RequestBody Map<String, String> payload) {
         
-        // 🔥 CORRECCIÓN 1: Validar correo GLOBALMENTE, no solo en la empresa del Súper Admin
         if (usuarioRepository.findEmpresaIdByCorreo(payload.get("adminCorreo")) != null) {
             throw new ReglaNegocioException("El correo del administrador ya existe en el sistema.");
         }
 
-        // 1. Crear Empresa
         Empresa empresa = new Empresa();
         empresa.setNombreComercial(payload.get("nombreComercial"));
         empresa.setRuc(payload.get("ruc"));
@@ -206,7 +204,6 @@ public class EmpresaController {
         empresa.setEstadoRegistro(true);
         Empresa empresaGuardada = empresaRepository.save(empresa);
 
-        // 2. Asignar el Plan Inicial
         Long planId = Long.valueOf(payload.get("planId"));
         Plan plan = planRepository.findById(planId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Plan no encontrado"));
@@ -221,8 +218,6 @@ public class EmpresaController {
         empresaGuardada.setSuscripcionVigente(subGuardada);
         empresaRepository.save(empresaGuardada);
 
-        // 🔥 CORRECCIÓN 2: Evadimos la seguridad de Hibernate inyectando SQL Puro
-        // para guardar al dueño bajo su nuevo Tenant ID sin que la sesión de Java colapse.
         String adminNombre = payload.get("adminNombre");
         String adminCorreo = payload.get("adminCorreo");
         String adminPassword = passwordEncoder.encode(payload.get("adminPassword"));
@@ -233,7 +228,6 @@ public class EmpresaController {
             adminNombre, adminCorreo, adminPassword, empresaGuardada.getId()
         );
 
-        // 4. Retornar un DTO limpio para no marear al frontend
         Map<String, Object> respuestaSegura = new HashMap<>();
         respuestaSegura.put("id", empresaGuardada.getId());
         respuestaSegura.put("nombreComercial", empresaGuardada.getNombreComercial());
